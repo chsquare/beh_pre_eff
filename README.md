@@ -1,5 +1,7 @@
 # beh_pre_eff
 
+[![DOI](https://zenodo.org/badge/254319738.svg)](https://zenodo.org/badge/latestdoi/254319738)
+
 Analysis code for  
 Huber-Huber &amp; Melcher (2020) The preview effect with faces results from predictive processing across the saccade. Manuscript submitted for publication.
 
