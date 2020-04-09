@@ -1,0 +1,783 @@
+---
+title: "The preview effect with faces results from predictive processing across the saccade"
+author: "Christoph Huber-Huber, David Melcher"
+output:
+  html_document:
+    theme: default
+    highlight: null
+    css: style.css
+    toc: true
+    toc_float: true
+    number_sections: true
+    dev: svg
+editor_options:
+  chunk_output_type: console
+
+---
+
+This is the html-rendered R markdown file (`Rmd`) which accompanies the manuscript:  
+Huber-Huber, C. & Melcher, D. (2020) The preview effect with faces results from predictive processing across the saccade. Manuscript submitted for publication.
+
+The code used to generate this file reproduces all statistics and figures in the manuscript from the data which is provided as well. For all background information information about the study, however, please refer to the manuscript file.
+
+Figure and table numbers correspond to figures and tables in the manuscript. 
+
+
+```{r INIT, echo = FALSE, warning = FALSE}
+
+suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(lme4))
+suppressPackageStartupMessages(library(emmeans))
+suppressPackageStartupMessages(library(boot))
+suppressPackageStartupMessages(library(stargazer))
+suppressPackageStartupMessages(library(citr))
+suppressPackageStartupMessages(library(knitr))
+
+# This is an R option, and _not_ a knitr option.
+# getOption("width") # The default width for code output is 75, which is quite narrow.
+options(width=150)
+
+if (.Platform$OS.type == "unix") {
+  knitr.dev.args <- NULL
+} else {
+  # nice to have on windows
+  knitr.dev.args <- list(useDingbats=FALSE)
+} 
+
+opts_chunk$set(echo=FALSE,
+               cache=FALSE,
+               include=TRUE,
+               eval=TRUE,
+               results='markup',
+               error=FALSE, # stop in case of error (default: TRUE continues even when error)
+               message=FALSE, # do not show messages
+               warning=FALSE, # do not warn
+               autodep=TRUE,
+               comment=NA, # to remove '##' before output
+               dev.args=knitr.dev.args,
+               fig.align="center",
+               cache.path='knitr-cache/',
+               fig.path='knitr-figures/')
+
+# The documentation of these functions is partially very bad.
+# If you have questions contact: christoph@huber-huber.at
+source("Rfunctions/ggplotLmerCoefplot2_function.R")
+source("Rfunctions/ggplotLmerFixef_function.R")
+source("Rfunctions/remef.v0.6.10.R")
+source("Rfunctions/fixef_tab_function.R")
+source("Rfunctions/rt_filter_function.R")
+source("Rfunctions/anovaREML_function.R")
+source("Rfunctions/stargazerAnovaRmd_function.R")
+source("Rfunctions/stargazerAnova_function.R")
+
+```
+
+
+```{r ANALYSIS SETTINGS}
+
+# Set these to TRUE to recompute everything from the raw data
+IMPORTDATAANEW <- FALSE
+RUNMODELLINGANEW <- FALSE
+DATADIR <- "data"
+
+```
+
+
+
+```{r FUNCTION DEFINITIONS}
+
+lmer.fe.ci.tab <- function(m, ci) {
+  m.fe.tab <- fixef.tab(m)
+  m.fe.tab$Parameter <- factor(rownames(m.fe.tab), levels = rownames(m.fe.tab))
+  m.ci.tab <- as.data.frame(ci)
+  m.ci.tab$Parameter <- factor(rownames(m.ci.tab), levels = rownames(m.ci.tab))
+  m.fe.ci.tab <- merge(m.fe.tab, m.ci.tab)
+  m.fe.ci.tab <- m.fe.ci.tab[order(m.fe.ci.tab$Parameter),] # sort again
+}
+
+glmer.ci.tab <- function(m, cis) {
+  # NOTE: 'cis' is usually a matrix
+  t <- data.frame(Parameter = names(fixef(m)),
+                  Estimate = fixef(m),
+                  loci = cis[rownames(cis) %in% names(fixef(m)),"2.5 %"], # assuming we have 2.5% and 97.5% cis
+                  upci = cis[rownames(cis) %in% names(fixef(m)),"97.5 %"])
+  colnames(t)[3:4] <- lme4:::format.perc(c(.025, .975), 3) # re-name!
+  rownames(t) <- 1:nrow(t)
+  return(t)
+}
+
+lmer.get.names <- function(m, ran.slo.mm.pat = 'm1.mm\\[, "|"\\]') {
+  # Helper function to get all the factor/effect names from an lmer model.
+  # Use "^...$" to get replacement with contrast in brackets and afterwards
+  # again the same expression but without "^...$" to get replacement for
+  # the interaction names without contrast in brackets.
+  # For continuous predictors, like 'prttrl.^1z', this is not required.
+  gsub.fixef <- list(`^TargOrientIn-Up$`="Target Orientation (In-Up)",
+                     `^PreviewInv-Val$`="Preview (Inv-Val)",
+                     `^TrainingInvalid-Valid$`="Training (Inv-Val)",
+                     `TrialNum.1z`="Trial number",
+                     `TargOrientIn-Up`="Target Orientation",
+                     `PreviewInv-Val`="Preview",
+                     `TrainingInvalid-Valid`="Training",
+                     `:`=" x ")
+  
+  gsub.ranef <- list(`partnr`="Participant")
+  
+  fixed.effect.names <- names(fixef(m))
+  for (i in 1:length(gsub.fixef))
+    fixed.effect.names <- gsub(names(gsub.fixef[i]), gsub.fixef[i], fixed.effect.names)
+  names(fixed.effect.names) <- names(fixef(m))
+
+  random.slope.names <- gsub(ran.slo.mm.pat, '', colnames(ranef(m)[[1]])) # remove "....mm" and brackets
+  # escape all the "[|]" in names(random.slope.names), because these names will be used 
+  # as 'pattern' in 'gsub':
+  names(random.slope.names) <- gsub("(\\[|\\]|\\(|\\))", "\\\\\\1", colnames(ranef(m)[[1]]))
+  # Do the same replacement here as for fixed effects
+  for (i in 1:length(gsub.fixef)) {
+    random.slope.names <- gsub(names(gsub.fixef[i]), gsub.fixef[i], random.slope.names)
+  }
+  
+  random.factor.names <- names(ranef(m))
+  for (i in 1:length(gsub.ranef))
+    random.factor.names <- gsub(names(gsub.ranef[i]), gsub.ranef[i], random.factor.names)
+  names(random.factor.names) <- names(ranef(m))
+
+  
+  return(list(fixed.effect.names = fixed.effect.names, 
+              random.slope.names = random.slope.names,
+              random.factor.names = random.factor.names))
+}
+```
+
+
+```{r LOAD DATA, echo = FALSE, warning = FALSE}
+
+if (IMPORTDATAANEW) {
+  
+  dat <- data.table(read.table(paste(DATADIR, "data_raw.txt", sep="/"),
+                               header = T, sep = "\t"))
+  
+  # sort the factor levels
+  dat[, Preview := factor(Preview, levels = c("Val", "Inv"))]
+  dat[, TargOrient := factor(TargOrient, levels = c("Up", "In"))]
+  dat[, PrevOrient := factor(PrevOrient, levels = c("Up", "In"))]
+  dat[, Blocktype := factor(Blocktype, levels = c("Mixed", "Pure"))]
+  dat[, Training := factor(Training, levels = c("Valid", "Invalid"))]
+  
+  # a check
+  dat[!is.na(ResponseCorrect),table(partnr, interaction(Preview, Blocktype))]
+  
+  save(dat, file = paste(DATADIR, "data.pre.all.RData", sep="/"))
+  
+} else {
+  # load prepared data
+  load(paste(DATADIR, "data.pre.all.RData", sep="/"))
+}
+
+```
+
+
+# Overview of the data
+
+## Proportion correct
+
+```{r}
+# the minimum proportion of correct responses to be achieved in order to include a participant in the analysis
+prop.corr.min <- .60
+```
+
+Here, we check the average performance across the experiment in the tilt discrimination task. Participants with less than `r prop.corr.min * 100`% correct responses are excluded assuming that they did not do the task.
+
+```{r}
+dat.overview <- dat[,
+                    list(Training = unique(Training),
+                         prop.corr = mean(ResponseCorrect[!is.na(ResponseCorrect)])),
+                    by="partnr"]
+
+dat.overview[, sprintf("prop.corr<%.2f", prop.corr.min) := prop.corr < prop.corr.min]
+
+setkey(dat.overview, prop.corr) # sort by proportion correct
+
+dat.overview # display the table
+
+```
+
+```{r}
+partnr.ex <- dat.overview[prop.corr < prop.corr.min, partnr]
+dat <- dat[! partnr %in% partnr.ex]
+```
+
+Thus, participants excluded are: `r paste(partnr.ex, collapse = ", ")`.  
+
+Number of participants per training group:  
+```{r}
+dat.overview[! partnr %in% partnr.ex, table(Training)]
+```
+
+
+```{r SAVE DATA}
+if (IMPORTDATAANEW) {
+  # add to prepared/preprocessed data
+  save(dat, dat.overview, file = paste(DATADIR, "data.pre.RData", sep = "/"))
+}
+```
+
+
+## Demographics
+
+Age:
+
+```{r}
+unique(dat[, list(partnr,age)])[, summary(age)]
+```
+
+Gender (0 -> female; 1 -> male):
+
+```{r}
+unique(dat[, list(partnr,gender)])[, table(gender)]
+```
+
+Handedness (0 -> left; 1 -> right):
+
+```{r}
+unique(dat[, list(partnr,handedness)])[, table(handedness)]
+```
+
+Eyedness (0 -> left; 1 -> right):
+
+```{r}
+unique(dat[, list(partnr,eyedness)])[, table(eyedness)]
+```
+
+
+
+
+# Response time
+
+For details on the model fitting and model comparison approach, see the corresponding `Rmd` source code file.
+
+```{r PREPARE DATA FOR MODELLING}
+
+if (IMPORTDATAANEW) {
+  
+  load(paste(DATADIR, "data.pre.RData", sep = "/"))
+  
+  # filter response times (RT)
+  rtfilt <- rt.filter.mad(dat, 
+                          RTman ~ partnr + Blocktype + Preview + TargOrient + Training + ResponseCorrect + SacEndOk,
+                          madFactor = 3, skip.factor.check = T)
+  
+  lmer.data.RT.mixed <- dat[Blocktype == "Mixed" & !is.na(rtfilt) & SacEndOk == 1 & !is.na(SacEndOk) & !is.na(ResponseCorrect) & ResponseCorrect == 1]
+  
+  # Let trial number start at 1
+  lmer.data.RT.mixed[, TrialNum := TrialNum - 512]
+  lmer.data.RT.mixed[, TrialNum.1z := scale(TrialNum, center = 1)] # center at first trial
+  
+  # Set contrasts with MASS package to successive difference contrasts,
+  # which are also good for our 2-level factors here
+  contrasts(lmer.data.RT.mixed$Preview) <- MASS::contr.sdif(levels(lmer.data.RT.mixed$Preview))
+  contrasts(lmer.data.RT.mixed$TargOrient) <- MASS::contr.sdif(levels(lmer.data.RT.mixed$TargOrient))
+  contrasts(lmer.data.RT.mixed$Training) <- MASS::contr.sdif(levels(lmer.data.RT.mixed$Training))
+  
+  save(lmer.data.RT.mixed, file = paste(DATADIR, "data.RT.mixed.RData", sep = "/"))
+  
+  
+  # For error rates
+  lmer.data.ER.mixed <- dat[Blocktype == "Mixed" & !is.na(rtfilt) & SacEndOk == 1 & !is.na(SacEndOk) & !is.na(ResponseCorrect)]
+  
+  # Let trial number start at 1
+  lmer.data.ER.mixed[, TrialNum := TrialNum - 512]
+  lmer.data.ER.mixed[, TrialNum.1z := scale(TrialNum, center = 1)] # center at first trial
+  
+  contrasts(lmer.data.ER.mixed$Preview) <- MASS::contr.sdif(levels(lmer.data.ER.mixed$Preview))
+  contrasts(lmer.data.ER.mixed$TargOrient) <- MASS::contr.sdif(levels(lmer.data.ER.mixed$TargOrient))
+  contrasts(lmer.data.ER.mixed$Training) <- MASS::contr.sdif(levels(lmer.data.ER.mixed$Training))
+  
+  save(lmer.data.ER.mixed, file = paste(DATADIR, "data.ER.mixed.RData", sep = "/"))
+  
+}
+```
+
+
+
+```{r model RT}
+
+if (RUNMODELLINGANEW) {
+  
+  # Our approach: We determine the maximum model that's possible to estimate,
+  #               i.e. that's not singular and converges. For that model we calculate
+  #               confidence intervals for the fixed effect parameters. Depending on
+  #               the limits of the confidence intervals we classify fixed effects
+  #               as significant.
+  
+  load(paste(DATADIR, "data.RT.mixed.RData", sep = "/"))
+  
+  # -------- start modelling
+  
+  # We take different optimizer options, which appears to lead to more converged models
+  # than in a first run with the default optimizer 'nloptwrap'
+  lmerCtrl <- lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e7))
+  
+  Sys.time()
+  m0 <- lmer(-1/RTman ~ TargOrient * Preview * Training * TrialNum.1z + (1 | partnr),
+             lmer.data.RT.mixed, control = lmerCtrl)
+  Sys.time() # 1 sec
+  plot(m0)
+  summary(m0)
+  
+  save(m0, file = paste(DATADIR, "m0.RData", sep = "/"))
+  
+  m1.mm <- model.matrix(-1/RTman ~ TargOrient * Preview * Training * TrialNum.1z, lmer.data.RT.mixed)
+  # to get all the values into script via copy and paste from console output use this code:
+  #   cat(paste('(0 + m1.mm[,"', colnames(m1.mm)[!grepl("Training", colnames(m1.mm))], '"] | partnr) +\n', sep=""))
+  # ATTENTION: Random slopes only for within-participant effects; thus, not for 'Training'!
+  # ATTENTION: Avoid duplicate "Intercept"!
+  Sys.time()
+  m1 <- lmer(-1/RTman ~ TargOrient * Preview * Training * TrialNum.1z + 
+               (1 | partnr) + 
+               (0 + m1.mm[,"TargOrientIn-Up"] | partnr) +
+               (0 + m1.mm[,"PreviewInv-Val"] | partnr) +
+               (0 + m1.mm[,"TrialNum.1z"] | partnr) +
+               (0 + m1.mm[,"TargOrientIn-Up:PreviewInv-Val"] | partnr) +
+               (0 + m1.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr) +
+               (0 + m1.mm[,"PreviewInv-Val:TrialNum.1z"] | partnr) +
+               (0 + m1.mm[,"TargOrientIn-Up:PreviewInv-Val:TrialNum.1z"] | partnr),
+             lmer.data.RT.mixed, control = lmerCtrl)
+  Sys.time() # 5 sec
+  plot(m1)
+  summary(m1)
+  
+  save(m1, m1.mm, file = paste(DATADIR, "m1.RData", sep = "/"))
+  
+  # We remove the random slope with 0 variance from m1, arriving at model m2
+  Sys.time()
+  m2 <- lmer(-1/RTman ~ TargOrient * Preview * Training * TrialNum.1z + 
+               (1 | partnr) + 
+               (0 + m1.mm[,"TargOrientIn-Up"] | partnr) +
+               (0 + m1.mm[,"PreviewInv-Val"] | partnr) +
+               (0 + m1.mm[,"TrialNum.1z"] | partnr) +
+               (0 + m1.mm[,"TargOrientIn-Up:PreviewInv-Val"] | partnr) +
+               (0 + m1.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr) +
+               (0 + m1.mm[,"PreviewInv-Val:TrialNum.1z"] | partnr),
+             lmer.data.RT.mixed, control = lmerCtrl)
+  Sys.time() # 5 sec
+  isSingular(m2)
+  # -> still singular.
+  save(m2, file = paste(DATADIR, "m2.RData", sep = "/"))
+  
+  # We remove the random slope with 0 variance from m2, arriving at model m3
+  Sys.time()
+  m3 <- lmer(-1/RTman ~ TargOrient * Preview * Training * TrialNum.1z + 
+               (1 | partnr) + 
+               (0 + m1.mm[,"TargOrientIn-Up"] | partnr) +
+               (0 + m1.mm[,"PreviewInv-Val"] | partnr) +
+               (0 + m1.mm[,"TrialNum.1z"] | partnr) +
+               (0 + m1.mm[,"TargOrientIn-Up:PreviewInv-Val"] | partnr) +
+               (0 + m1.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr),
+             lmer.data.RT.mixed, control = lmerCtrl)
+  Sys.time() # 5 sec
+  isSingular(m3) # -> not singular anymore, and converged!
+  # NOTE: This model does not converge with default optimizer 'nloptwrap'.
+  
+  save(m3, file = paste(DATADIR, "m3.RData", sep = "/"))
+  
+  # Get confidence intervals for the last model
+  Sys.time()
+  m3.cis <- confint(m3, method = "profile")
+  Sys.time() # 20 min
+  # Make a nice table
+  m3.fe.ci.tab <- lmer.fe.ci.tab(m3, m3.cis)
+  
+  save(m3, m3.cis, m3.fe.ci.tab, file = paste(DATADIR, "m3.RData", sep = "/"))
+  
+  
+  # Let's see about the Preview effect in the beginning of the test phase, if we calculate
+  # separate models for the two training groups.
+  m3a.mm <- model.matrix(-1/RTman ~ TargOrient * Preview * TrialNum.1z,
+                         lmer.data.RT.mixed[Training == "Valid"])
+  Sys.time()
+  
+  m3a1 <- lmer(-1/RTman ~ TargOrient * Preview * TrialNum.1z + 
+                 (1 | partnr) + 
+                 (0 + m3a.mm[,"TargOrientIn-Up"] | partnr) +
+                 (0 + m3a.mm[,"PreviewInv-Val"] | partnr) +
+                 (0 + m3a.mm[,"TrialNum.1z"] | partnr) +
+                 (0 + m3a.mm[,"TargOrientIn-Up:PreviewInv-Val"] | partnr) +
+                 (0 + m3a.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr),
+               lmer.data.RT.mixed[Training == "Valid"], control = lmerCtrl)
+  Sys.time() # 
+  isSingular(m3a1) # TRUE
+  
+  save(m3a1, m3a.mm, file = paste(DATADIR, "m3a1.RData", sep = "/"))
+  
+  # we remove the variance component that's 0
+  Sys.time()
+  m3a2 <- lmer(-1/RTman ~ TargOrient * Preview * TrialNum.1z + 
+                 (1 | partnr) + 
+                 (0 + m3a.mm[,"TargOrientIn-Up"] | partnr) +
+                 (0 + m3a.mm[,"PreviewInv-Val"] | partnr) +
+                 (0 + m3a.mm[,"TrialNum.1z"] | partnr) +
+                 (0 + m3a.mm[,"TargOrientIn-Up:PreviewInv-Val"] | partnr),
+               lmer.data.RT.mixed[Training == "Valid"], control = lmerCtrl)
+  Sys.time() # 
+  isSingular(m3a2) # FALSE
+  summary(m3a2)
+  
+  Sys.time()
+  m3a2.cis <- confint(m3a2, method = "profile")
+  Sys.time() # ca. 4 min
+  # Make a nice table
+  m3a2.fe.ci.tab <- lmer.fe.ci.tab(m3a2, m3a2.cis)
+
+  save(m3a2, m3a2.cis, m3a2.fe.ci.tab, file = paste(DATADIR, "m3a2.RData", sep = "/"))
+  
+  
+  m3b.mm <- model.matrix(-1/RTman ~ TargOrient * Preview * TrialNum.1z,
+                         lmer.data.RT.mixed[Training == "Invalid"])
+  Sys.time()
+  m3b1 <- lmer(-1/RTman ~ TargOrient * Preview * TrialNum.1z + 
+                 (1 | partnr) + 
+                 (0 + m3b.mm[,"TargOrientIn-Up"] | partnr) +
+                 (0 + m3b.mm[,"PreviewInv-Val"] | partnr) +
+                 (0 + m3b.mm[,"TrialNum.1z"] | partnr) +
+                 (0 + m3b.mm[,"TargOrientIn-Up:PreviewInv-Val"] | partnr) +
+                 (0 + m3b.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr),
+               lmer.data.RT.mixed[Training == "Invalid"], control = lmerCtrl)
+  Sys.time() # 
+  isSingular(m3b1) # FALSE
+  summary(m3b1)
+  
+  Sys.time()
+  m3b1.cis <- confint(m3b1, method = "profile")
+  Sys.time() # ca. 3 min
+  # Make a nice table
+  m3b1.fe.ci.tab <- lmer.fe.ci.tab(m3b1, m3b1.cis)
+
+  save(m3b1, m3b1.cis, m3b1.fe.ci.tab, m3b.mm, file = paste(DATADIR, "m3b1.RData", sep = "/"))
+  
+} else {
+  load("data/data.RT.mixed.RData")
+  load("data/m0.RData")
+  load("data/m1.RData")
+  load("data/m2.RData")
+  load("data/m3.RData")
+  load("data/m3a1.RData")
+  load("data/m3a2.RData")
+  load("data/m3b1.RData")
+}
+
+```
+
+## Model comparisons
+
+```{r, results='asis'}
+
+m1.names <- lmer.get.names(m1) # should be 'm1'
+
+stargazer.anova.Rmd(m0, m3, m2, m1,
+                    model.numbers = c(1, 2, 3, 4),
+                    this.caption = "Supplementary Table S1. Response time model comparisons to determine the random effects structure. Each column presents the parameters (random and fixed) of a model. Models in adjacent columns are compared to each other by likelihood ratios tests. Test results (<em>&chi;<sup>2</sup></em>, degress of freedom, and p value) for a model pair are printed for the right model of each pair in the last three rows. Observations - the number of single trials for the model; AICc - Akaike's Information Criterion corrected for small sample sizes; Df - model degrees of freedom; <em>&chi;<sup>2</sup></em> - statistic for the likelihood ratio test, for each model the difference in deviance compared to the model to the left; <em>&chi;<sup>2</sup></em> Df - degrees of freedom for the likelihood ratio test, for each model the difference in Df compared to the model to the left; <em>p</em> - the p-value for the likelihood ratio test.",
+                    dep.var.labels = "-1 / Response time [sec]",
+                    fixed.effect.names = m1.names$fixed.effect.names,
+                    random.effects.table = 8,
+                    random.slope.names = m1.names$random.slope.names,
+                    random.factor.names = m1.names$random.factor.names,
+                    report = "vcst",
+                    suppressNegativeChiDf = T,
+                    notes = "", # "<sup>r</sup> Correlations between random slopes estimated, i.e. not restricted to zero.",
+                    add.VarCorr.tables = F, # we don't need the complete variance structure tables, because we don't have any correlations in the models anyway.
+                    out = "tables/SupplementaryTableS1.html") # write to file
+```
+
+
+The table of model comparisons above indicates that the model with the complete random effects structure is singular. Removing the random slope of the highest-order interaction with zero variance, still leads to a singular model. Removing the next zero variance component leads to a model that we call the maximum identifiable model (here Model 2). This model is better than the model without random slopes as can be seen from the model comparison indices in that table.
+
+## Results from the maximum identified model
+
+```{r Figure 2, fig.width=5, fig.cap="Figure 2. Estimated marginal means from the maximum identified model on response time data (Model 2). The preview effect, the difference between valid and invalid preview trials, depended on the training condition. In contrast to valid training, there was no evidence for a preview effect with invalid training (see also Models 2a and 2b below). Note that effect estimates were obtained for the first trial of the test phase. Error bars represent asymptotic confidence intervals."}
+
+m3.label <- "Model 2" # corresponds to model number in the table 'stargazer.anova.Rmd'
+
+ggplot.lmer.fixef(m3, fixef2plot = c("Preview", "Training"),
+                  dv.fnc = function(rt) - 1000 / rt, 
+                  ylab = "Response time [ms]",
+                  mappingAdd = "x = Training, colour = Training, linetype = Preview",
+                  withErrorBar = T,
+                  ebp = position_dodge(width = 0.15)) +
+  labs(x = "Training",
+       title = "") + # better no label
+  scale_linetype_discrete(labels = c("Valid","Invalid")) + 
+  guides(color = FALSE)
+
+ggsave("figures/Figure-2-raw.pdf")
+
+```
+
+
+```{r Figure 3, fig.cap="Figure 3. Fixed effect coefficients of the maximum identified linear mixed model on response times (Model 2)."}
+m3.names <- lmer.get.names(m3)
+ggplot.lmer.coefplot2(m3.fe.ci.tab, 
+                      coef.names = m3.names$fixed.effect.names[2:length(m3.names$fixed.effect.names)],
+                      model.names = m3.label) 
+
+ggsave("figures/Figure-3-raw.pdf")
+
+```
+
+
+```{r, results='asis'}
+# get nicer names
+for (i in length(m3.names$fixed.effect.names):1) { # reverse direction of the loop!
+  m3.fe.ci.tab$Parameter <- gsub(names(m3.names$fixed.effect.names[i]), m3.names$fixed.effect.names[i],
+                                 m3.fe.ci.tab$Parameter)
+}
+# create the table
+stargazer(m3.fe.ci.tab, summary = F, type = "html", rownames = F,
+          title = sprintf("Fixed effects of %s. Estimate, standard error, t-value, and lower/upper limit of 95%% profile confidence intervals. This table contains the data plotted in Figure 3.",
+                          m3.label))
+```
+
+```{r Figure 4, fig.cap="Figure 4. Response times showed an interaction of Training x Preview x Trial Number, which suggested that training with only valid trials resulted in a larger preview effect than training with only invalid trials particularly in the beginning of the test phase. The preview effect then evolved in opposite directions for both training groups. Compared to the invalid training group, the preview effect in the valid training group declined. Each dot is one trial. Trial number was standardized and centered on the first trial of the test phase."}
+
+ggplot.lmer.fixef(m3, fixef2plot = c("Preview", "Training", contpred="TrialNum.1z"),
+                  dv.fnc = function(rt) - 1000 / rt, 
+                  ylab = "Response time [ms]",
+                  xlab = "Trial number (standardized)",
+                  sample.proportion = 2) +
+  labs(color = "Training",
+       title = "") + 
+  scale_linetype_discrete(labels = c("Valid","Invalid")) + 
+  coord_cartesian(ylim = c(250, 2000))
+
+ggsave("figures/Figure-4-raw.pdf")
+
+```
+
+Note, Figure 4 is zoomed-in at the y-axis. Only half of all individual trial data points (sampled randomly) are plotted in order to decrease the size of the plot.
+
+
+
+## Valid and invalid training groups analysed separately
+
+Here we follow up the interaction Preview x Training x Trial Number to see whether the preview effects are significant within the training groups.
+
+```{r, results='asis'}
+m3a2.label <- "Model 2a"
+# get nicer names
+for (i in length(m3.names$fixed.effect.names):1) { # reverse direction of the loop!
+  m3a2.fe.ci.tab$Parameter <- gsub(names(m3.names$fixed.effect.names[i]), m3.names$fixed.effect.names[i],
+                                   m3a2.fe.ci.tab$Parameter)
+}
+# create the table
+stargazer(m3a2.fe.ci.tab, summary = F, type = "html", rownames = F,
+          title = sprintf("Supplementary Table S2. Fixed effects of %s, the maximum identified model on response times of the valid training group. Estimate, standard error, t-value, and lower/upper limit of 95%% profile confidence intervals.",
+                          m3a2.label),
+          out = "Tables/SupplementaryTableS2.html")
+
+m3b1.label <- "Model 2b"
+# get nicer names
+for (i in length(m3.names$fixed.effect.names):1) { # reverse direction of the loop!
+  m3b1.fe.ci.tab$Parameter <- gsub(names(m3.names$fixed.effect.names[i]), m3.names$fixed.effect.names[i],
+                                   m3b1.fe.ci.tab$Parameter)
+}
+# create the table
+stargazer(m3b1.fe.ci.tab, summary = F, type = "html", rownames = F,
+          title = sprintf("Supplementary Table S3. Fixed effects of %s, the maximum identified model on response times of the invalid training group. Estimate, standard error, t-value, and lower/upper limit of 95%% profile confidence intervals.",
+                          m3b1.label),
+          out = "tables/SupplementaryTableS3.html")
+```
+
+## Response times summary
+
+The Preview x Training x Trial Number interaction is significant. Note that in the figure illustrating this interaction, the preview effect is the difference between dashed (invalid preview) and solid (valid preview) lines in the direction of the y-axis. If the training phase was valid, there is a preview effect in the beginning of the following test phase which decreases in the course of the test phase. If training phase was invalid, there is a smaller/no preview effect in the beginning of the following test phase which then, compared to the valid training condition, tends to increase. In other words, the influence of training equals across time.
+
+Besides this interaction, there is a significant main effect of Target Orientation. This effect is in the expected direction known from previous research, i.e. faster responses with upright than with inverted targets. The direction of the effect can be seen from the contrasts of the Target Orientation factor and the value of the effect estimate. The contrast is `In-Up`, meaning inverted minus upright. That means the effect estimate is calculated by subtracing upright target trials from inverted target trials. That means positive values indicate larger dependent variable values for inverted than for upright targets. The dependent variable transformation of -1 / RT before model fitting ensured that larger values still mean slower responses (i.e. maintain the direction of the effect). Thus, given a positive value for the Target Orientation effect estimate (`r cat(sprintf("%.3f", m3.fe.ci.tab[m3.fe.ci.tab$Parameter == "TargOrientIn-Up", "Estimate"]))`) and confidence intervals excluding zero, we can conclude that responses were significanly faster with upright than with inverted targets.
+
+
+# Error rate / proportion correct
+
+For details on the model fitting and model comparison approach, see the corresponding `Rmd` source code file.
+
+```{r model ER}
+
+if (RUNMODELLINGANEW) {
+  
+  load(paste(DATADIR, "data.ER.mixed.RData", sep = "/"))
+  
+  # ---------- start modelling
+  #
+  # same as before, we take a different optimizer than the default
+  glmerCtrl <- glmerControl(optimizer = "bobyqa")
+  
+  Sys.time()
+  e0 <- glmer(RespErr ~ TargOrient * Preview * Training * TrialNum.1z + (1 | partnr),
+              lmer.data.ER.mixed, family = binomial(link = logit), control = glmerCtrl)
+  Sys.time() # converges with bobyqa in 23 sec!
+  plot(e0) # that's fine. it's a logit model, so the residuals do _not_ have to be a more or less symmetric cloud!
+  summary(e0)
+  
+  # save
+  save(e0, file = paste(DATADIR, "e0.RData", sep = "/"))
+  
+  # but e0 does not have random slopes, so might overestimate some effects,
+  # try another model with some random slopes
+  e1.mm <- model.matrix(RespErr ~ TargOrient * Preview * Training * TrialNum.1z, lmer.data.ER.mixed)
+  # to get all the values into script via copy and paste use this output:
+  #   cat(paste('(0 + e1.mm[,"', colnames(e1.mm)[!grepl("Training", colnames(e1.mm))], '"] | partnr) +\n', sep=""))
+  # ATTENTION: Random slopes only for within-participant effects! Thus, NOT for 'Training'!
+  # ATTENTION: Avoid duplicate "Intercept"!
+  Sys.time()
+  e1 <- glmer(RespErr ~ TargOrient * Preview * Training * TrialNum.1z + 
+                (1 | partnr) + 
+                (0 + e1.mm[,"TargOrientIn-Up"] | partnr) +
+                (0 + e1.mm[,"PreviewInv-Val"] | partnr) +
+                (0 + e1.mm[,"TrialNum.1z"] | partnr) +
+                (0 + e1.mm[,"TargOrientIn-Up:PreviewInv-Val"] | partnr) +
+                (0 + e1.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr) +
+                (0 + e1.mm[,"PreviewInv-Val:TrialNum.1z"] | partnr) +
+                (0 + e1.mm[,"TargOrientIn-Up:PreviewInv-Val:TrialNum.1z"] | partnr),
+              lmer.data.ER.mixed, family = binomial(link = logit), control = glmerCtrl)
+  Sys.time() # ca. 2 min
+  isSingular(e1) # is singular!
+  summary(e1)
+  
+  save(e1, e1.mm, file = paste(DATADIR, "e1.RData", sep = "/"))
+  
+  
+  # we omit the variance components with variance == 0
+  # first, we omit the component that is less theoretically relevant, i.e. TargOrient x Preview,
+  # and we keep the component related to Preview x TrialNum
+  Sys.time()
+  e2 <- glmer(RespErr ~ TargOrient * Preview * Training * TrialNum.1z + 
+               (1 | partnr) + 
+               (0 + e1.mm[,"TargOrientIn-Up"] | partnr) +
+               (0 + e1.mm[,"PreviewInv-Val"] | partnr) +
+               (0 + e1.mm[,"TrialNum.1z"] | partnr) +
+               (0 + e1.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr) +
+               (0 + e1.mm[,"PreviewInv-Val:TrialNum.1z"] | partnr) +
+               (0 + e1.mm[,"TargOrientIn-Up:PreviewInv-Val:TrialNum.1z"] | partnr),
+             lmer.data.ER.mixed, family = binomial(link = logit), control = glmerCtrl)
+  Sys.time() # ca. 1.5 min
+  summary(e2)
+  isSingular(e2) # still, singular.
+
+  save(e2, file = paste(DATADIR, "e2.RData", sep = "/"))
+  
+  # the variance for the component Preview x Trial Number is still 0, so we omit also that one
+  Sys.time()
+  e3 <- glmer(RespErr ~ TargOrient * Preview * Training * TrialNum.1z + 
+               (1 | partnr) + 
+               (0 + e1.mm[,"TargOrientIn-Up"] | partnr) +
+               (0 + e1.mm[,"PreviewInv-Val"] | partnr) +
+               (0 + e1.mm[,"TrialNum.1z"] | partnr) +
+               (0 + e1.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr) +
+               (0 + e1.mm[,"TargOrientIn-Up:PreviewInv-Val:TrialNum.1z"] | partnr),
+             lmer.data.ER.mixed, family = binomial(link = logit), control = glmerCtrl)
+  Sys.time() # ca. 1 min
+  summary(e3)
+  isSingular(e3) # not singular!
+
+  save(e3, file = paste(DATADIR, "e3.RData", sep = "/"))
+  
+  # get confidence intervals
+  Sys.time()
+  e3.cis <- confint(e3, method = "profile")
+  Sys.time() # veeery long, ca. 8h15min.
+  
+  e3.ci.tab <- glmer.ci.tab(e3, e3.cis)
+  
+  save(e3, e3.cis, e3.ci.tab, file = paste(DATADIR, "e3.RData", sep = "/"))
+  
+} else {
+  load("data/data.ER.mixed.RData")
+  load("data/e0.RData")
+  load("data/e1.RData")
+  load("data/e2.RData")
+  load("data/e3.RData")
+}
+```
+
+
+## Model comparisons
+
+```{r, results='asis'}
+
+e1.names <- lmer.get.names(e1, ran.slo.mm.pat = 'e1.mm\\[, "|"\\]')
+
+stargazer.anova.Rmd(e0, e3, e2, e1,
+                    model.numbers = c(5, 6, 7, 8),
+                    this.caption = "Supplementary Table S4. Error rate model comparisons to determine the random effects structure. Each column presents the parameters (random and fixed) of a model. Models in adjacent columns are compared to each other by likelihood ratios tests. Test results (<em>&chi;<sup>2</sup></em>, degress of freedom, and p value) for a model pair are printed for the right model of each pair in the last three rows. Observations - the number of single trials for the model; AICc - Akaike's Information Criterion corrected for small sample sizes; Df - model degrees of freedom; <em>&chi;<sup>2</sup></em> - statistic for the likelihood ratio test, for each model the difference in deviance compared to the model to the left; <em>&chi;<sup>2</sup></em> Df - degrees of freedom for the likelihood ratio test, for each model the difference in Df compared to the model to the left; <em>p</em> - the p-value for the likelihood ratio test.",
+                    dep.var.labels = "Task error (log odds)",
+                    fixed.effect.names = e1.names$fixed.effect.names,
+                    random.effects.table = 5,
+                    random.slope.names = e1.names$random.slope.names,
+                    random.factor.names = e1.names$random.factor.names,
+                    report = "vcst",
+                    suppressNegativeChiDf = T,
+                    omit.fitting.method = T, # has to be TRUE for glmerMod!
+                    notes = "",
+                    add.VarCorr.tables = F, # we don't need the complete variance structure tables, because we don't have any correlations in the models anyway.
+                    out = "tables/SupplementaryTableS4.html") # write to file
+```
+
+The table of model comparisons above indicates that the model with the complete random effects structure is singular. Removing the random slope of the less interesting component with zero variance, still leads to a singular model. Removing the next zero variance component leads to the maximum identifiable model (Model 6). This model is better than the model without random slopes as can be seen from the model comparison indices in the table above.
+
+## Results from the maximum identified model
+
+```{r Figure 5, fig.cap="Figure 5. Fixed effect coefficients of the maximum identified generalized linear model on task errors (Model 6)."}
+
+e3.names <- lmer.get.names(e3)
+e3.label <- "Model 6" # corresponds to model number in the table 'stargazer.anova.Rmd'
+ggplot.lmer.coefplot2(e3.ci.tab, 
+                      coef.names = e3.names$fixed.effect.names[2:length(e3.names$fixed.effect.names)], 
+                      model.names = e3.label)
+
+ggsave("figures/Figure-5-raw.pdf")
+
+```
+
+
+```{r, results='asis'}
+# get nicer names
+for (i in length(e3.names$fixed.effect.names):1) { # reverse direction of the loop!
+  e3.ci.tab$Parameter <- gsub(names(e3.names$fixed.effect.names[i]), e3.names$fixed.effect.names[i],
+                                 e3.ci.tab$Parameter)
+}
+# create the table
+stargazer(e3.ci.tab, summary = F, type = "html", rownames = F,
+          title = sprintf("Fixed effects of %s. Estimate and lower/upper limit of 95%% profile confidence intervals. This table contains the data plotted in Figure 5.", e3.label))
+```
+
+
+```{r Figure 6, fig.cap="Additional figure illustrating the Target Orientation x Trial Number interaction which is strictly speaking not significant and anyway theoretically not relevant."}
+# This effect borderline significant.
+ggplot.lmer.fixef(e3, fixef2plot = c("TargOrient", "TrialNum.1z"),
+                  ylab = "Error rate (logit)",
+                  xlab = "Trial number (standardized)",
+                  linecolour = "black",
+                  noPoints = T) +
+  labs(linetype = "Target\norientation",
+       title = NULL)
+
+```
+
+## Error rates summary
+
+Clearly less task error with upright than with inverted targets. In addition, there is a borderline significant Target Orientation x Trial Number interaction in the direction of a decreasing target orientation effect (inverted minus upright) across the test phase. However, strickly speaking, this effect is _not_ significant and it is theoretically not relevant, so we do not interpret it and do not mention it in the paper.
+
+
+# Results summary
+
+Training influenced the preview effect in response times. In the beginning of the test phase, there was a clear preview effect if participants had trained with only valid trials. However, after invalid training there was no evidence for a preview effect. Moreover, this change in the preview effect equalled during the test phase.
+
+In addition but theoretically not relevant, target face orientation, affected performance leading to slower responses and more errors when target faces were inverted compared to when they were upright.
+
+
+# Session information
+
+```{r}
+sessionInfo()
+```
+
+

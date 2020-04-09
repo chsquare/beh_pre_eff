@@ -1,0 +1,180 @@
+body, td {
+    font-family: sans-serif;
+    background-color: white;
+    font-size: 13px; /* Default 13px; was set to 20px for presentation with a beamer*/
+  }
+
+body {
+  /* max-width: 1200px; */
+  margin: auto;
+  padding: 1em;
+  line-height: 1.538em; /* 1.538 = 20/13, results from default line-height 20px with default font-size 13px */
+}
+
+p {
+  padding-top: .5em;
+}
+
+tt, code, pre {
+  font-family: 'DejaVu Sans Mono', 'Droid Sans Mono', 'Lucida Console', Consolas, Monaco, monospace;
+}
+
+/* 
+Font size units 'em' are proportions of base font size, i.e. body font size or, if body font size has not
+been set, browser default. See: https://css-tricks.com/css-font-size/
+That means the 'h_' scale with the body font-size set above.
+*/
+h1 {
+  font-size:2.2em;
+  line-height:1.2em;
+}
+
+h2 {
+  font-size:1.8em;
+}
+
+h3 {
+  font-size:1.4em;
+}
+
+h4 {
+  font-size:1.0em;
+}
+
+h5 {
+  font-size:0.9em;
+}
+
+h6 {
+  font-size:0.8em;
+}
+
+a:visited {
+  color: rgb(50%, 0%, 50%);
+}
+
+/* outcommented by christoph to show large images/plots in their original size
+pre, img {
+  max-width: 100%;
+} */
+pre {
+  overflow-x: auto;
+}
+pre code {
+  /* display: block; padding: 0.5em; */
+  display: block; padding: 0;
+  /* to get scroll bar */
+  /* from https://stackoverflow.com/questions/36845178/width-of-r-code-chunk-output-in-rmarkdown-files-knitr-ed-to-html */
+  word-wrap: normal;
+  white-space: pre;
+}
+
+code {
+  font-size: 92%;
+  /* border: 1px solid #ccc; */
+  border: 0 solid;
+}
+
+code[class] {
+  background-color: #E8E8E8;
+}
+
+table, td, th {
+  border: none;
+  padding-left: 10px;
+}
+}
+
+blockquote {
+  color:#666666;
+    margin:0;
+  padding-left: 1em;
+  border-left: 0.5em #EEE solid;
+}
+
+hr {
+  height: 0px;
+  border-bottom: none;
+  border-top-width: thin;
+  border-top-style: dotted;
+  border-top-color: #999999;
+}
+
+/* formatting for automatically created table of contents */
+/* btw, only java-script type of comments work in CSS style specifications */
+.table-of-contents {
+  float: left;
+  width: 20%;
+  background: #eee;
+  font-size: 1em; /* 'line-height' seems to not have an effect here. */
+  padding: 1em 2em;
+  margin: 0 0 0em 0em;
+  position: fixed;
+  right: 0; /* ensures that table of contents is to the right! :-). Actually, with "right: 0" the table is to the left ;-) */
+}
+.table-of-contents ul {
+  padding: 0;
+  list-style-type: none;
+}
+.table-of-contents li {
+  margin: 0 0 0.25em 0;
+}
+.table-of-contents a {
+  text-decoration: none;
+}
+.table-of-contents a:hover,
+.table-of-contents a:active {
+  text-decoration: underline;
+}
+
+@media print {
+  * {
+    background: transparent !important;
+    color: black !important;
+    filter:none !important;
+    -ms-filter: none !important;
+  }
+  
+  body {
+    font-size:12pt;
+    max-width:100%;
+  }
+  
+  a, a:visited {
+    text-decoration: underline;
+  }
+  
+  hr {
+    visibility: hidden;
+    page-break-before: always;
+  }
+  
+  pre, blockquote {
+    padding-right: 1em;
+    page-break-inside: avoid;
+  }
+  
+  tr, img {
+    page-break-inside: avoid;
+  }
+  
+  img {
+    max-width: 100% !important;
+  }
+  
+  @page :left {
+    margin: 15mm 20mm 15mm 10mm;
+  }
+  
+  @page :right {
+    margin: 15mm 10mm 15mm 20mm;
+  }
+  
+  p, h2, h3 {
+    orphans: 3; widows: 3;
+  }
+  
+  h2, h3 {
+    page-break-after: avoid;
+  }
+}
