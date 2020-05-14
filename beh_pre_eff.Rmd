@@ -1,5 +1,5 @@
 ---
-title: "The preview effect with faces results from predictive processing across the saccade"
+title: "The behavioural preview effect with faces results from predictive processing across the saccade"
 author: "Christoph Huber-Huber, David Melcher"
 output:
   html_document:
@@ -16,7 +16,7 @@ editor_options:
 ---
 
 This is the html-rendered R markdown file (`Rmd`) which accompanies the manuscript:  
-Huber-Huber, C. & Melcher, D. (2020) The preview effect with faces results from predictive processing across the saccade. Manuscript submitted for publication.
+Huber-Huber, C. & Melcher, D. (2020) The behavioural preview effect with faces results from predictive processing across the saccade. Manuscript submitted for publication.
 
 The code used to generate this file reproduces all statistics and figures in the manuscript from the data which is provided as well. For all background information information about the study, however, please refer to the manuscript file.
 
