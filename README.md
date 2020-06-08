@@ -4,7 +4,7 @@
 This repository contains the complete analysis code and additional information for  
 Huber-Huber &amp; Melcher (2020) The behavioural preview effect with faces results from predictive processing across the saccade. Manuscript submitted for publication.
 
-To recompute the results, get the raw data file from [osf.io](https://osf.io/), with [doi:10.17605/OSF.IO/TY69K](doi.org/10.17605/OSF.IO/TY69K), and put it into a folder with the name 'data' inside this repository.
+To recompute the results, get the raw data file from [osf.io](https://osf.io/), with [doi:10.17605/OSF.IO/TY69K](https://doi.org/10.17605/OSF.IO/TY69K), and put it into a folder with the name 'data' inside this repository.
 
 Start from the file `beh_pre_eff.Rmd` which contains R code and markdown. Processing this file with the R package `knitr` or the knit-to-html function in [RStudio](https://rstudio.com) creates the html file `beh_pre_eff.html` also included in this  repository. This html file contains all results, figures, and some additional information.
 
