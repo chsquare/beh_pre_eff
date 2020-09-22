@@ -148,6 +148,13 @@ lmer.get.names <- function(m, ran.slo.mm.pat = 'm1.mm\\[, "|"\\]') {
               random.slope.names = random.slope.names,
               random.factor.names = random.factor.names))
 }
+
+logit2prob <- function(logit){
+  # eventually used?
+  odds <- exp(logit)
+  prob <- odds / (1 + odds)
+  return(prob)
+}
 ```
 
 
@@ -515,7 +522,7 @@ ggsave("figures/Figure-2-raw.pdf")
 ```
 
 
-```{r Figure 3, fig.cap="Figure 3. Fixed effect coefficients of the maximum identified linear mixed model on response times (Model 2)."}
+```{r Figure 3, fig.cap="Figure 3. Fixed effect coefficients of the maximum identified linear mixed model on response times (Model 2). Effect contrasts are given in brackets next to the names of main effects on the y-axis. In-Up: Inverted minus upright; Inv-Val: Invalid minus valid."}
 m3.names <- lmer.get.names(m3)
 ggplot.lmer.coefplot2(m3.fe.ci.tab, 
                       coef.names = m3.names$fixed.effect.names[2:length(m3.names$fixed.effect.names)],
@@ -725,7 +732,7 @@ The table of model comparisons above indicates that the model with the complete 
 
 ## Results from the maximum identified model
 
-```{r Figure 5, fig.cap="Figure 5. Fixed effect coefficients of the maximum identified generalized linear model on task errors (Model 6)."}
+```{r Figure 5, fig.cap="Figure 5. Fixed effect coefficients of the maximum identified generalized linear model on task errors (Model 6). Effect contrasts are given in brackets next to the names of main effects on the y-axis. In-Up: Inverted minus upright; Inv-Val: Invalid minus valid."}
 
 e3.names <- lmer.get.names(e3)
 e3.label <- "Model 6" # corresponds to model number in the table 'stargazer.anova.Rmd'
@@ -750,10 +757,11 @@ stargazer(e3.ci.tab, summary = F, type = "html", rownames = F,
 ```
 
 
-```{r Figure 6, fig.cap="Additional figure illustrating the Target Orientation x Trial Number interaction which is strictly speaking not significant and anyway theoretically not relevant."}
+```{r Figure S1, fig.cap="Figure S1. The Target Orientation x Trial Number interaction. This interaction is strictly speaking not significant and anyway theoretically not relevant."}
 # This effect borderline significant.
 ggplot.lmer.fixef(e3, fixef2plot = c("TargOrient", "TrialNum.1z"),
-                  ylab = "Error rate (logit)",
+                  dv.fnc = logit2prob,
+                  ylab = "Error rate [proportion]",
                   xlab = "Trial number (standardized)",
                   linecolour = "black",
                   noPoints = T) +
@@ -762,9 +770,21 @@ ggplot.lmer.fixef(e3, fixef2plot = c("TargOrient", "TrialNum.1z"),
 
 ```
 
+```{r Figure S2, fig.cap="Figure S2. Proportion of errors in Training and Preview conditions."}
+# This effect borderline significant.
+ggplot.lmer.fixef(e3, fixef2plot = c("Preview", "Training"),
+                  dv.fnc = logit2prob,
+                  ylab = "Error rate [proportion]",
+                  noPoints = T,
+                  ebp = position_dodge(width = 0.15)) +
+  scale_linetype_discrete(labels = c('Val'="Valid", 'Inv'="Invalid")) + 
+  labs(title = NULL)
+
+```
+
 ## Error rates summary
 
-Clearly less task error with upright than with inverted targets. In addition, there is a borderline significant Target Orientation x Trial Number interaction in the direction of a decreasing target orientation effect (inverted minus upright) across the test phase. However, strickly speaking, this effect is _not_ significant and it is theoretically not relevant, so we do not interpret it and do not mention it in the paper.
+Clearly less task error with upright than with inverted targets. In addition, there is a borderline significant Target Orientation x Trial Number interaction in the direction of a decreasing target orientation effect (inverted minus upright) across the test phase (Figure S1). However, strickly speaking, this effect is _not_ significant and it is theoretically not relevant, so we do not mention it in the paper.
 
 
 # Results summary
