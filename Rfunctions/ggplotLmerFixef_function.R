@@ -263,7 +263,9 @@ ggplot.lmer.fixef <- function(model,
     
     if (sum(!fixefIsFactor)==1) { # ---------- 1 continuous predictor ---------------
       contpredName <- fixef2plot[!fixefIsFactor]
-      pdat[contpredName] <- cp.fnc(pdat[contpredName]) # apply function to continuous predictor
+      # apply function to continuous predictor on regression line data and on data for individual points
+      rpd[contpredName] <- cp.fnc(rpd[contpredName])
+      pdat[contpredName] <- cp.fnc(pdat[contpredName])
       if (is.null(mappingAdd)) {
         factors2plot <- fixef2plot[fixefIsFactor]
         if (length(factors2plot) > 0) { # at least one factor in addition to continuous predictor
@@ -277,7 +279,7 @@ ggplot.lmer.fixef <- function(model,
                                    group=interaction(`", factors2plot[1], "`,`", factors2plot[2], "`), 
                                    colour=`", factors2plot[2], "`, y=dvremeft)", sep = ""),
                                NA) # option 2 and 3 are identical! that necessary!
-        } else { # only one continuous predictor
+        } else { # only one continuous predictor and no factors
           mappingCom <- paste("aes(x=`", contpredName, "`, y=dvremeft)", sep = "")
         }
         if (is.null(mappingAddForPoints)) mappingComForPoints <- mappingCom else
