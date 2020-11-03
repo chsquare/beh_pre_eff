@@ -27,13 +27,13 @@ stargazer.anova <- function(...,
                             column.labels = NULL,
                             model.numbers = NULL,
                             random.effects.table = NULL,
-                            random.factor.names = NULL, # c(partnrtarget="Participant_by_target"),
+                            random.factor.names = NULL,
                             random.slope.names = NULL,
                             fixed.effect.names = NULL,
                             suppressNegativeChiDf = F,
                             denoteCorrelationHTML = "<sup>r</sup>") {  
   # Attention: This function is quite a hack.
-  # In particular they way it inserts custom-made parts into a standard 'stargazer' output table is 
+  # In particular the way it inserts custom-made parts into a standard 'stargazer' output table is 
   # very hacky.
   #
   # This function creates a model comparison table with fixed and random effect variance components.
@@ -56,6 +56,11 @@ stargazer.anova <- function(...,
   # random.factor.names ... named character vector
   #                         the names(random.factor.names) are the original names and the elements of 
   #                         random.factor.names are the new names that should be used in the table.
+  #                         variance components will be grouped together in the table of unique 
+  #                         'random.factor.names' and not 'names(random.factor.names)', which means
+  #                         that e.g. names like "participant.1" and "participant.2" can be grouped 
+  #                         together as "Participant.". That's useful if a model does _not_ contain
+  #                         all correlations between random slopes of the same random factor.
   # random.slope.names .... can be a named vector or an unnamed vector of random slope names.
   #                         if named, the names have to correspond to the original random slope names!
   # denoteCorrelationHTML ... a string (one-element character vector) which should be inserted 
@@ -386,54 +391,81 @@ stargazer.anova <- function(...,
     # get random effects structures of all models
     varcorrs <- lapply(list.of.models, VarCorr) # printed as Std.Dev., but internally stored primarily as Variance
     
-    # get random factor names of all models
-    rf.names.perModel <- lapply(varcorrs, names)
-    all.rf.names <- unique(unlist(rf.names.perModel))
+    # which unique random factor names will there be eventually?
+    random.factor.names.print.unique <- unique(random.factor.names) # result is unnamed
     
-    all.rf.names.strip.number <- gsub("\\.\\d+$", "", all.rf.names)
-    names(all.rf.names.strip.number) <- all.rf.names
-    
-    # default random factor names: the original names
-    if (is.null(random.factor.names)) {
-      random.factor.names <- unique(all.rf.names.strip.number)
-      names(random.factor.names) <- unique(all.rf.names.strip.number) # make sure the vector is named for later!
-    } else {
-      if (any(! unique(all.rf.names.strip.number) %in% names(random.factor.names))) stop("stargazer.anova says: At least one of the random factor names has not been assigned a name to in 'random.factor.names'!")
-      if (any(! names(random.factor.names) %in% unique(all.rf.names.strip.number))) stop("stargazer.anova says: There are too many names in 'random.factor.names' or names that do not occur in the models!")
+    # helper function required soon below
+    cbind.matrix.fill <- function(a, b) {
+      # hack to get NA values for random slopes that are missing in some models but present in others
+      # for the same random factor
+      if (is.null(a)) return(b)
+      if (is.null(b)) return(a)
+      a.colnames <- colnames(a)
+      b.colnames <- colnames(b)
+      # rownames will be conserved anyway
+      a.t.dt <- data.table(t(a))
+      b.t.dt <- data.table(t(b))
+      c.t.dt <- rbind(a.t.dt, b.t.dt, fill = T)
+      c <- t(c.t.dt) # t(data.table(...)) results in a matrix!
+      colnames(c) <- c(a.colnames, b.colnames)
+      return(c)
     }
     
-    # for each random factor, determine which models have which random slopes
-    resl <- has.corr <- as.list(rep("", length(random.factor.names))) # one list per random factor, 'resl' Random EffectS List
-    names(resl) <- names(has.corr) <- names(random.factor.names)
-    for (rfn in names(resl)) { # loop over random factors
-      rfns.with.digit <- all.rf.names[all.rf.names.strip.number == rfn]
-      resl[[rfn]] <- has.corr[[rfn]] <- as.list(rep("", length(varcorrs))) # create one list per model
-      for (i in 1:length(varcorrs)) { # loop over models, actually variance component object of each model
-        resl[[rfn]][[i]] <- unlist(lapply(rfns.with.digit, function(rfnd) diag(varcorrs[[i]][[rfnd]]) )) # can be 'numeric(0)', which has length() == 0.
-        has.corr.tmp <- unlist(lapply(rfns.with.digit[ rfns.with.digit %in% names(varcorrs[[i]]) ],
-                                      function(rfnd) rep( length(varcorrs[[i]][[rfnd]]) > 1, nrow(varcorrs[[i]][[rfnd]])) ))
-        if (is.null(has.corr.tmp))
-          has.corr[[rfn]][[i]] <- NA else 
-            has.corr[[rfn]][[i]] <- has.corr.tmp
-        names(resl[[rfn]][[i]]) <- names(has.corr[[rfn]][[i]]) <- unlist(lapply(rfns.with.digit, function(rfnd) rownames(varcorrs[[i]][[rfnd]]) ))
-      }
-    }
-    # all random slopes' names per random factor
-    all.rs.names.perFactor <- lapply(resl, function(x) unique(names(unlist(x)))) # result is named ;-)
-    
-    # create matrix of random slope variances
+    # create matrices of random slope variances
+    # for each random factor one matrix with random effects in the rows and models in the columns
     re.mats <- has.corr.mats <- list()
-    for (rfn in names(random.factor.names)) {
-      tmp.mat <- tmp.mat.corr <- matrix(nrow = length(all.rs.names.perFactor[[rfn]]), ncol = nmod) # initialized
-      rownames(tmp.mat) <- rownames(tmp.mat.corr) <- all.rs.names.perFactor[[rfn]]
+    for (rfnpu in random.factor.names.print.unique) { # loop through finally used random factor names
       for (mi in 1:nmod) {
-        tmp.mat[ names(resl[[rfn]][[mi]]), mi] <- resl[[rfn]][[mi]]
-        tmp.mat.corr[ names(has.corr[[rfn]][[mi]]), mi] <- has.corr[[rfn]][[mi]]
+        # each finally used random factor name can correspond to several random factor 
+        # names in the model object, so get all regex patterns that determine the factor names in the model
+        rfn.patterns <- names(random.factor.names)[random.factor.names == rfnpu]
+        re.vect <- c()
+        has.corr.vect <- c()
+        for (rfno in names(varcorrs[[mi]])) { # loop through original random factor names as they are in the model object
+          if (any(unlist(lapply(rfn.patterns, function(p) grepl(p, rfno))))) { # does one of the patterns match the original random factor name?
+            # current 'rfno' is relevant
+            # get the VARIANCES of the random effects component for the current random factor and model
+            re.vect.tmp <- diag(varcorrs[[mi]][[rfno]])
+            # determine whether a component had correlations estimated
+            has.corr.tmp <- rep( length(varcorrs[[mi]][[rfno]]) > 1, nrow(varcorrs[[mi]][[rfno]]) )
+            # makes sure the current random slope does not yet exists for the factor name to be printed, 
+            # cause that would be a problem meaning there is an error in the model structure/bad model.
+            # consider final random slope names instead of the original ones
+            for (i in 1:length(re.vect.tmp)) {
+              rvtn.grepl.tmp <- unlist(lapply(1:length(random.slope.names), 
+                                              function(pi) grepl(names(random.slope.names)[pi], names(re.vect.tmp)[i])))
+              if (sum(rvtn.grepl.tmp) > 1) stop(sprintf("Model %d, random factor '%s', random slope '%s': pattern in 'random.slope.names' fits to more than one random slope! That should not be the case!", 
+                                                        mi, rfno, names(re.vect.tmp)[i]))
+              if (sum(rvtn.grepl.tmp) == 1) {
+                # replace the original random slope name with the to-be-printed random slope name
+                names(re.vect.tmp)[i] <- gsub(names(random.slope.names[rvtn.grepl.tmp]),
+                                              random.slope.names[rvtn.grepl.tmp],
+                                              names(re.vect.tmp)[i])
+              } else {
+                cat(sprintf("No printed random slope name defined for: %s", names(re.vect.tmp)[i]))
+              }
+            }
+            if (! any(names(re.vect.tmp) %in% names(re.vect))) {
+              re.vect <- c(re.vect, re.vect.tmp)
+              has.corr.vect <- c(has.corr.vect, has.corr.tmp)
+            } else {
+              stop(sprintf("Model %d, random factor '%s': random slopes '%s' seem to exist multiple times for the same random factor, which means there is an error in the model structure or it's a bad model!", 
+                           mi, rfno, names(re.vect)))
+            }
+          } else {
+            # current 'rfno' is not relevant for the current model
+          }
+        }
+        re.mat.tmp <- as.matrix(re.vect, ncol = 1)
+        colnames(re.mat.tmp) <- model.numbers[mi]
+        re.mats[[rfnpu]] <- cbind.matrix.fill(re.mats[[rfnpu]], re.mat.tmp)
+        # similar for the matrix that tells whether correlations have been estimated
+        has.corr.mat.tmp <- as.matrix(has.corr.vect, ncol = 1)
+        colnames(has.corr.mat.tmp) <- model.numbers[mi]
+        rownames(has.corr.mat.tmp) <- rownames(re.mat.tmp)
+        has.corr.mats[[rfnpu]] <- cbind.matrix.fill(has.corr.mats[[rfnpu]], has.corr.mat.tmp)
       }
-      re.mats <- append(re.mats, list(tmp.mat))
-      has.corr.mats <- append(has.corr.mats, list(tmp.mat.corr))
     }
-    names(re.mats) <- names(has.corr.mats) <- names(random.factor.names)
     
     # a helper function
     rm.table.and.borders <- function(sg.output) {
@@ -444,20 +476,19 @@ stargazer.anova <- function(...,
     }
     
     # for each random factor, put a separate section into the final table (store that intermediately in 'sg.re')
-    rfn.prev <- ""
-    for (rfn in names(random.factor.names)) {
+    for (rfn in random.factor.names.print.unique) {
       
       # add random factor name to table, in italics!
-      if (rfn == names(random.factor.names[1]))
+      if (rfn == random.factor.names.print.unique[1])
         # for the first one: NO border!
         sg.re <- append(sg.re, sprintf('<tr><td style=\"text-align:left\"><i>%s</i></td> <td colspan=\"%d\"></td> </tr>',
-                                       random.factor.names[[rfn]], sg.ncol-1)) else
+                                       rfn, sg.ncol-1)) else
            # for all other ones add border (horizontal line)
            sg.re <- append(sg.re, sprintf('<tr><td style=\"text-align:left\"><i>%s</i></td> <td colspan=\"%d\" style=\"border-top: 1px solid black\"></td> </tr>', 
-                                          random.factor.names[[rfn]], sg.ncol-1))
+                                          rfn, sg.ncol-1))
       
       # add table of variance components
-      sg.re.tmp.raw <- stargazer(re.mats[[rfn]], type = "html", rownames = T)
+      sg.re.tmp.raw <- stargazer(re.mats[[rfn]], type = "html", rownames = T, colnames = F)
       sg.re.tmp <- rm.table.and.borders(sg.re.tmp.raw) # puts each line in one element of character vector
       # add sign for whether component is correlated
       for (i in 1:nrow(has.corr.mats[[rfn]])) { # i ... rows
@@ -473,14 +504,8 @@ stargazer.anova <- function(...,
           }
         }
       }
-
-      # get proper name for each random slope
-      for (i in 1:length(random.slope.names)) {
-        sg.re.tmp <- gsub(names(random.slope.names[i]), random.slope.names[i], sg.re.tmp)
-      }
       
       sg.re <- append(sg.re, sg.re.tmp)
-      rfn.prev <- rfn
       
     } # end adding separate section for each random factor
     
