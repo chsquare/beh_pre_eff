@@ -14,10 +14,13 @@ get.beta <- function(fixEff, charVect) {
 
 # to plot just a random sample of individual trial data points
 sample.prop <- function(dat, prop = 5, seed = 0) {
+  # For example, prop = 5 will return a random _fifth_ of all observations in 'dat'.
   set.seed(seed)
   dat <- as.data.frame(dat)
   dat[sample(nrow(dat), round(nrow(dat) / prop) ),]
 }
+
+
 
 # the main function here
 ggplot.lmer.fixef <- function(model,
@@ -50,7 +53,10 @@ ggplot.lmer.fixef <- function(model,
                               ErrorBarFactor = 1,
                               error.bar.lmer.df = "asymptotic",
                               fixef2plot.are.all.estimates = F,
-                              sample.proportion = NULL) {
+                              sample.proportion = NULL,
+                              addConditionalModes = NULL,
+                              condModesAlpha = .75,
+                              random.slopes.mm.pattern = 'm1.mm\\[, "|"\\]') {
   # Some limited explanations:
   #   pts ... plot text size
   #   factors ... needs to include _all_ factors' names, even the ones supplied to 'facetby'!
@@ -94,6 +100,19 @@ ggplot.lmer.fixef <- function(model,
   #                         see documentation of the 'lmer.df' argument in the 'emmeans' package for details
   #                         and > vignette("models", "emmeans")
   #
+  #   addConditionalModes ... to add conditions modes, i.e. the model predictions for individual participants
+  #                         that's more or less adding individual participants data, however, given the 
+  #                         model parameters (variance, etc.); see 'shrinkage'.
+  #                         only works if there are no continuous predictors (at the moment).
+  #                         a character string specifying the name of the random factor for
+  #                         which conditional modes are to be illustrated.
+  #
+  # random.slopes.mm.pattern ... defaults to 'm1.mm\\[, "|"\\]', a regex pattern.
+  #                         Some random effect/slopes names might have been created from a model.matrix
+  #                         column (in order to restrict particular covariances to zero). Thus, the
+  #                         the random slopes names in 'ranef(model)' can contain some prefix and/suffixes.
+  #                         This argument specifies which pre/suffixes should be removed.
+  # 
   # requires the 'remef' function from
   # http://read.psych.uni-potsdam.de/attachments/article/134/remef.v0.6.10.R
   
@@ -166,6 +185,7 @@ ggplot.lmer.fixef <- function(model,
   dat$dvmt <- dv.fnc(dat$dvm)
   
   # compute dv also from remef, in case there is at least one continuous predictor (for plotting single data points)
+  # this appears to be more convenient than calculating from model parameters directly
   if (any(!fixefIsFactor)) {
     if (remallef) { # remove all effects except the to-be-plotted ones (their names are in fixefEstimateNames)
       if (!isLM) {
@@ -190,6 +210,44 @@ ggplot.lmer.fixef <- function(model,
   # There might be some redundancy in the dataset (due to same value for each random-factor level), 
   #   so reduce the values in order to not plot each datapoint more than once:
   datr <- unique(dat[c(fixef2plot, "dvmt")])
+  
+  
+  if (!is.null(addConditionalModes)) {
+    
+    if (! all(fixefIsFactor)) stop("Addition conditional modes only works for factors, but not (yet) if continuous predictors are to be plotted as well!")
+    
+    if (! addConditionalModes %in% names(ranef(model))) stop(sprintf("Requested condition modes for factor '%s' cannot be found in the model!", addConditionalModes))
+    
+    # get the conditional modes (cm), i.e. quasi the individual participants data given the model parameters
+    fe.names <- names(fixef(model)) # in fixef names there is nothing to replace
+    re.names <- colnames(ranef(model)[[addConditionalModes]])
+    re.names.repl <- unlist(lapply(re.names, function(x) gsub(random.slopes.mm.pattern, "", x)))
+    # the 'each' in rep(..., each = ) is crucial!
+    delu.names <- rep(re.names, each = nrow(ranef(model)[[addConditionalModes]]) )
+    delu.names.repl <- unlist(lapply(delu.names, function(x) gsub(random.slopes.mm.pattern, "", x)))
+    
+    # fixed effects
+    delb <- matrix(model@pp$delb, nrow = 1) # == fixef(model)
+    Xt <- t(model@pp$X)
+    bidx <- fe.names %in% names(fixefEstimates)
+    
+    # random effects
+    delu <- matrix(model@pp$delu, nrow = 1)
+    Zt <- as(model@pp$Zt, "matrix")
+    uidx <- delu.names.repl %in% names(fixefEstimates)
+    
+    # create a dataset with conditional mode levels, factors, and dv with 
+    # the to-be-plotted fixed and random effects
+    datcm.all <- dat[, c(addConditionalModes, fixef2plot)]
+    # fixed + random is the model prediction including conditional modes
+    datcm.all$dvm <- as.vector( delb[,bidx] %*% Xt[bidx,] + delu[,uidx] %*% Zt[uidx,] )
+    datcm.all$dvmt <- dv.fnc(datcm.all$dvm) # transform the dv
+    datcm <- unique(datcm.all) # get only unique rows
+    
+  } else {
+    datcm <- NULL
+  }
+  
   
   # ---- create datset for plotting error bars
   
@@ -331,11 +389,8 @@ ggplot.lmer.fixef <- function(model,
       
     } else { # ... 2 continuous predictors
       if (sum(!fixefIsFactor) > 2) stop("Not more then two continuous predictors possible at the moment!")
-      # *****
-      if (!noPoints) p1 <- p1 + geom_point(size=pps, alpha = pointAlpha)  
-      # end with: p2
-      p2
     }
+    
   } else {
     # ----------- no continuous predictor, only factors --------------
     pdat <- datr # in this case, the reduced data is already the complete plot data: pdat.
@@ -343,13 +398,21 @@ ggplot.lmer.fixef <- function(model,
     nFactorLevelCombs <- nrow(expand.grid(lapply(dat[fixef2plot], unique)))
     if (nFactorLevelCombs != nrow(pdat)) stop("ggplot.lmer.fixef says: Computing to-be-plotted values from estimates and model.matrix, or checking number of factor-level combinations did not work!")
     # plot
+    factors2plot <- fixef2plot[fixefIsFactor]
     if (is.null(mappingAdd)) {
-      factors2plot <- fixef2plot[fixefIsFactor]
-      com <- switch(length(factors2plot),
-                    paste("aes(x=", factors2plot[1], ", linetype=", factors2plot[1], ", group=", factors2plot[1], ", y=dvmt)"),
-                    paste("aes(x=", factors2plot[2], ", linetype=", factors2plot[1], ", group=", factors2plot[1], ", y=dvmt)"),
-                    paste("aes(x=", factors2plot[2], ", linetype=", factors2plot[1], ", group=", factors2plot[1], ", y=dvmt)"),
-                    NA) # option 2 and 3 are identical! that necessary!
+      if (is.null(addConditionalModes)) {
+        com <- switch(length(factors2plot),
+                      paste("aes(x=", factors2plot[1], ", linetype=", factors2plot[1], ", group=", factors2plot[1], ", y=dvmt)"),
+                      paste("aes(x=", factors2plot[2], ", linetype=", factors2plot[1], ", group=", factors2plot[1], ", y=dvmt)"),
+                      paste("aes(x=", factors2plot[2], ", linetype=", factors2plot[1], ", group=", factors2plot[1], ", y=dvmt)"),
+                      NA) # option 2 and 3 are identical! that necessary!
+      } else {
+        # will add conditional modes below; here we prepare the aesthetics mapping
+        com <- switch(length(factors2plot),
+                      paste("aes(x=", factors2plot[1], ", linetype=", factors2plot[1], ", group=", factors2plot[1], ", y=dvmt)"),
+                      paste("aes(                         linetype=", factors2plot[1], ", group=", factors2plot[1], ", y=dvmt"),
+                      NA)      # factor 2 goes into facets, see below.
+      }
       mapping <- eval(parse(text=com))
       if (length(factors2plot)==3) facets <- paste(". ~ ", factors2plot[3], sep="")
     } else {
@@ -379,6 +442,56 @@ ggplot.lmer.fixef <- function(model,
         if ((ebp$width != 0))
           p2 <- p2 + theme(panel.grid.major.x = element_blank(),
                            axis.ticks.x = element_blank())
+    
+    if (!is.null(addConditionalModes)) {
+      
+      if (length(fixef2plot) == 2) {
+        # we need facets, otherwise plotting individual data is too much limited by how the 
+        # aesthetics mapping works (here, done very ugly)
+        # here, also take the 'facets_labeller' from the standard arguments, which is probably
+        # confusing.
+        p2 <- p2 + facet_grid(cols = eval(parse(text = sprintf("vars(%s)", factors2plot[2]))),
+                              labeller = facets_labeller)
+      } else {
+        if (length(fixef2plot) > 2) {
+          stop("Plot design with conditional modes for more than 2 factors not yet implemented!")
+        }
+      }
+      
+      # add the aesthetics for the random factor (for which conditional modes are requested)
+      # which means: define the 'group'
+      comCondModes <- paste(substr(com, 1, nchar(com)-1), 
+                            sprintf(", group = %s)", addConditionalModes),
+                            sep = "")
+      mappingCondModes <- eval(parse(text = comCondModes))
+      # conditions modes are plotted with smaller symbols, line sizes, etc. than the means
+      plsCondModes <- pls / 3
+      ppsCondModes <- pps / 3
+      # pre-generating geom_point and adding to p2 doesn't work, so have to do it like that:
+      if (is.null(ebp)) {
+        p2 <- p2 + geom_point(mapping = mappingCondModes, data = datcm, 
+                              size = ppsCondModes,
+                              alpha = condModesAlpha)
+      } else {
+        # if error bars get a specific 'position', do the same with conditional modes as well
+        positionCondModes <- position_dodge(width = ebp$width) # or a different width?
+        p2 <- p2 + geom_point(mapping = mappingCondModes, data = datcm, 
+                              size = ppsCondModes,
+                              position = positionCondModes,
+                              alpha = condModesAlpha)
+        # for the conditional mode lines, get rid of the 'linetype' in the aesthetics
+        comCondModesLines <- gsub("linetype\\s*=\\s*\\w*\\s*,", "", comCondModes)
+        mappingCondModesLines <- eval(parse(text=comCondModesLines))
+        p2 <- p2 + geom_line(inherit.aes = F,
+                             mapping = mappingCondModesLines,
+                             data = datcm,
+                             size = plsCondModes,
+                             alpha = condModesAlpha,
+                             position = positionCondModes)
+      }
+      
+    }
+    
   }
   # ---- end separate plotting section
   
