@@ -1,5 +1,5 @@
 ---
-title: "The behavioural preview effect with faces results from predictive processing across the saccade"
+title: "The behavioural preview effect with faces is susceptible to statistical regularities: Evidence for predictive processing across the saccade"
 author: "Christoph Huber-Huber, David Melcher"
 output:
   html_document:
@@ -16,9 +16,9 @@ editor_options:
 ---
 
 This is the html-rendered R markdown file (`Rmd`) which accompanies the manuscript:  
-Huber-Huber, C. & Melcher, D. (2020) The behavioural preview effect with faces results from predictive processing across the saccade. Manuscript submitted for publication.
+**Huber-Huber, C. & Melcher, D. (2020) The behavioural preview effect with faces is susceptible to statistical regularities: Evidence for predictive processing across the saccade. Manuscript submitted for publication.**
 
-The code used to generate this file reproduces all statistics and figures in the manuscript from the data which is provided as well. For all background information information about the study, however, please refer to the manuscript file.
+The code used to generate this file reproduces all statistics and figures in the manuscript from the data which is provided as well on the OSF page of the project (https://osf.io/ty69k/). This html file also contains all supplementary figures and tables and the analysis of the training phase data which is not directly relevant to the study but shows some very interesting insights (credit to an anonymous reviewer). For all background information about the study, however, please refer to the manuscript file.
 
 Figure and table numbers correspond to figures and tables in the manuscript. 
 
@@ -27,6 +27,8 @@ Figure and table numbers correspond to figures and tables in the manuscript.
 
 suppressPackageStartupMessages(library(data.table))
 suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(gtable))
+suppressPackageStartupMessages(library(grid))
 suppressPackageStartupMessages(library(lme4))
 suppressPackageStartupMessages(library(emmeans))
 suppressPackageStartupMessages(library(boot))
@@ -64,6 +66,7 @@ opts_chunk$set(echo=FALSE,
 # If you have questions contact: christoph@huber-huber.at
 source("Rfunctions/ggplotLmerCoefplot2_function.R")
 source("Rfunctions/ggplotLmerFixef_function.R")
+source("Rfunctions/cbind_plots_function.R")
 source("Rfunctions/remef.v0.6.10.R")
 source("Rfunctions/fixef_tab_function.R")
 source("Rfunctions/rt_filter_function.R")
@@ -81,6 +84,8 @@ IMPORTDATAANEW <- FALSE
 RUNMODELLINGANEW <- FALSE
 DATADIR <- "data"
 
+colorMapping <- c('Valid' = "#00BFC4", 'Val' = "#00BFC4",
+                  'Invalid' = "#F8766D", 'Inv' = "#F8766D")
 ```
 
 
@@ -476,6 +481,12 @@ if (RUNMODELLINGANEW) {
 
 ```
 
+
+## Number of trials
+
+Trials in the RT analysis: `r nrow(lmer.data.RT.mixed)`, i.e. `r (nrow(lmer.data.RT.mixed) / nrow(dat[Blocktype == "Mixed" & !is.na(TrialNum)])) * 100`% of a total number of `r nrow(dat[Blocktype == "Mixed" & !is.na(TrialNum)])` trials.
+
+
 ## Model comparisons
 
 ```{r, results='asis'}
@@ -484,7 +495,7 @@ m1.names <- lmer.get.names(m1) # should be 'm1'
 
 stargazer.anova.Rmd(m0, m3, m2, m1,
                     model.numbers = c(1, 2, 3, 4),
-                    this.caption = "Supplementary Table S1. Response time model comparisons to determine the random effects structure. Each column presents the parameters (random and fixed) of a model. Models in adjacent columns are compared to each other by likelihood ratios tests. Test results (<em>&chi;<sup>2</sup></em>, degress of freedom, and p value) for a model pair are printed for the right model of each pair in the last three rows. Observations - the number of single trials for the model; AICc - Akaike's Information Criterion corrected for small sample sizes; Df - model degrees of freedom; <em>&chi;<sup>2</sup></em> - statistic for the likelihood ratio test, for each model the difference in deviance compared to the model to the left; <em>&chi;<sup>2</sup></em> Df - degrees of freedom for the likelihood ratio test, for each model the difference in Df compared to the model to the left; <em>p</em> - the p-value for the likelihood ratio test.",
+                    this.caption = "Supplementary Table S1. Response time model comparisons to determine the random effects structure. Each column presents the parameters (random and fixed) of a model. Models in adjacent columns are compared to each other by likelihood ratios tests. Test results (<em>&chi;<sup>2</sup></em>, degrees of freedom, and p value) for a model pair are printed for the right model of each pair in the last three rows. Observations - the number of single trials for the model; AICc - Akaike's Information Criterion corrected for small sample sizes; Df - model degrees of freedom; <em>&chi;<sup>2</sup></em> - statistic for the likelihood ratio test, for each model the difference in deviance compared to the model to the left; <em>&chi;<sup>2</sup></em> Df - degrees of freedom for the likelihood ratio test, for each model the difference in Df compared to the model to the left; <em>p</em> - the p-value for the likelihood ratio test.",
                     dep.var.labels = "-1 / Response time [sec]",
                     fixed.effect.names = m1.names$fixed.effect.names,
                     random.effects.table = 8,
@@ -502,31 +513,37 @@ The table of model comparisons above indicates that the model with the complete 
 
 ## Results from the maximum identified model
 
-```{r Figure 2, fig.width=5, fig.cap="Figure 2. Estimated marginal means from the maximum identified model on response time data (Model 2). The preview effect, the difference between valid and invalid preview trials, depended on the training condition. In contrast to valid training, there was no evidence for a preview effect with invalid training (see also Models 2a and 2b below). Note that effect estimates were obtained for the first trial of the test phase. Error bars represent asymptotic confidence intervals."}
+```{r Figure 2, fig.width=5, fig.cap="Figure 2. Estimated marginal means from the maximum identified model on response time data (Model 2). Individual participants' conditional modes are illustrated with smaller symbols and thin lines connecting the valid and invalid preview points. The preview effect, the difference between valid and invalid preview trials, depended on the training condition. In contrast to valid training (left side), there was no evidence for a preview effect with invalid training (right side, see also Models 2a and 2b below). Note that effect estimates were obtained for the first trial of the test phase. Error bars represent asymptotic confidence intervals."}
 
 m3.label <- "Model 2" # corresponds to model number in the table 'stargazer.anova.Rmd'
 
 ggplot.lmer.fixef(m3, fixef2plot = c("Preview", "Training"),
                   dv.fnc = function(rt) - 1000 / rt, 
                   ylab = "Response time [ms]",
-                  mappingAdd = "x = Training, colour = Training, linetype = Preview",
+                  mappingAdd = "x = Preview, colour = Training, shape = Preview",
+                  facets_labeller = ggplot2::label_both,
                   withErrorBar = T,
-                  ebp = position_dodge(width = 0.15)) +
-  labs(x = "Training",
+                  ebp = position_dodge(width = .05),
+                  pls = 1,
+                  pps = 4,
+                  ebw = .2,
+                  addConditionalModes = "partnr") +
+  labs(x = "Preview",
        title = "") + # better no label
-  scale_linetype_discrete(labels = c("Valid","Invalid")) + 
-  guides(color = FALSE)
+  scale_x_discrete(labels = c("Valid","Invalid")) + 
+  scale_color_manual(values = colorMapping) + 
+  guides(color = FALSE, shape = FALSE)
 
 ggsave("figures/Figure-2-raw.pdf")
 
 ```
 
 
-```{r Figure 3, fig.cap="Figure 3. Fixed effect coefficients of the maximum identified linear mixed model on response times (Model 2). Effect contrasts are given in brackets next to the names of main effects on the y-axis. In-Up: Inverted minus upright; Inv-Val: Invalid minus valid."}
+```{r Figure 3, fig.cap="Figure 3. Fixed effect coefficients of the maximum identified linear mixed model on response times (Model 2). Error bars represent 95% profile confidence intervals. Effect contrasts are given in brackets next to the names of main effects on the y-axis. In-Up: Inverted minus upright; Inv-Val: Invalid minus valid."}
 m3.names <- lmer.get.names(m3)
 ggplot.lmer.coefplot2(m3.fe.ci.tab, 
                       coef.names = m3.names$fixed.effect.names[2:length(m3.names$fixed.effect.names)],
-                      model.names = m3.label) 
+                      model.names = m3.label)
 
 ggsave("figures/Figure-3-raw.pdf")
 
@@ -545,23 +562,29 @@ stargazer(m3.fe.ci.tab, summary = F, type = "html", rownames = F,
                           m3.label))
 ```
 
-```{r Figure 4, fig.cap="Figure 4. Response times showed an interaction of Training x Preview x Trial Number, which suggested that training with only valid trials resulted in a larger preview effect than training with only invalid trials particularly in the beginning of the test phase. The preview effect then evolved in opposite directions for both training groups. Compared to the invalid training group, the preview effect in the valid training group declined. Each dot is one trial. Trial number was standardized and centered on the first trial of the test phase."}
+```{r Figure 4, fig.cap="Figure 4. Response times showed an interaction of Training x Preview x Trial Number, which suggested that training with only valid trials resulted in a larger preview effect than training with only invalid trials particularly in the beginning of the test phase. The preview effect then evolved in opposite directions for both training groups. Compared to the invalid training group, the preview effect in the valid training group declined. Dots represent a random sample of half of all individual data points. Trial number was standardized and centered on the first trial of the test phase."}
 
-ggplot.lmer.fixef(m3, fixef2plot = c("Preview", "Training", contpred="TrialNum.1z"),
-                  dv.fnc = function(rt) - 1000 / rt, 
-                  ylab = "Response time [ms]",
-                  xlab = "Trial number (standardized)",
-                  sample.proportion = 2) +
+# keep the figure in a variable to add a second panel later on (see below)
+Figure4 <- ggplot.lmer.fixef(m3, fixef2plot = c("Preview", "Training",
+                                                contpred="TrialNum.1z"),
+                             dv.fnc = function(rt) - 1000 / rt, 
+                             ylab = "Response time [ms]",
+                             xlab = "Trial number (standardized)",
+                             sample.proportion = 2) +
   labs(color = "Training",
        title = "") + 
   scale_linetype_discrete(labels = c("Valid","Invalid")) + 
+  scale_color_manual(values = colorMapping) + 
   coord_cartesian(ylim = c(250, 2000))
+
+# show the figure
+Figure4
 
 ggsave("figures/Figure-4-raw.pdf")
 
 ```
 
-Note, Figure 4 is zoomed-in at the y-axis. Only half of all individual trial data points (sampled randomly) are plotted in order to decrease the size of the plot.
+Note, Figure 4 is zoomed-in at the y-axis.
 
 
 
@@ -599,12 +622,14 @@ stargazer(m3b1.fe.ci.tab, summary = F, type = "html", rownames = F,
 
 The Preview x Training x Trial Number interaction is significant. Note that in the figure illustrating this interaction, the preview effect is the difference between dashed (invalid preview) and solid (valid preview) lines in the direction of the y-axis. If the training phase was valid, there is a preview effect in the beginning of the following test phase which decreases in the course of the test phase. If training phase was invalid, there is a smaller/no preview effect in the beginning of the following test phase which then, compared to the valid training condition, tends to increase. In other words, the influence of training equals across time.
 
-Besides this interaction, there is a significant main effect of Target Orientation. This effect is in the expected direction known from previous research, i.e. faster responses with upright than with inverted targets. The direction of the effect can be seen from the contrasts of the Target Orientation factor and the value of the effect estimate. The contrast is `In-Up`, meaning inverted minus upright. That means the effect estimate is calculated by subtracing upright target trials from inverted target trials. That means positive values indicate larger dependent variable values for inverted than for upright targets. The dependent variable transformation of -1 / RT before model fitting ensured that larger values still mean slower responses (i.e. maintain the direction of the effect). Thus, given a positive value for the Target Orientation effect estimate (`r cat(sprintf("%.3f", m3.fe.ci.tab[m3.fe.ci.tab$Parameter == "TargOrientIn-Up", "Estimate"]))`) and confidence intervals excluding zero, we can conclude that responses were significanly faster with upright than with inverted targets.
+Besides this interaction, there is a significant main effect of Target Orientation. This effect is in the expected direction known from previous research, i.e. faster responses with upright than with inverted targets. The direction of the effect can be seen from the contrasts of the Target Orientation factor and the value of the effect estimate. The contrast is `In-Up`, meaning inverted minus upright. That means the effect estimate is calculated by subtracing upright target trials from inverted target trials. That means positive values indicate larger dependent variable values for inverted than for upright targets. The dependent variable transformation of -1 / RT before model fitting ensured that larger values still mean slower responses (i.e. maintain the direction of the effect). Thus, given a positive value for the Target Orientation effect estimate (`r sprintf("%.3f", m3.fe.ci.tab[m3.fe.ci.tab$Parameter == "TargOrientIn-Up", "Estimate"])`) and confidence intervals excluding zero, we can conclude that responses were significanly faster with upright than with inverted targets.
 
 
 # Error rate / proportion correct
 
 For details on the model fitting and model comparison approach, see the corresponding `Rmd` source code file.
+
+
 
 ```{r model ER}
 
@@ -706,6 +731,11 @@ if (RUNMODELLINGANEW) {
 ```
 
 
+## Number of trials
+
+Trials in the error rate analysis: `r nrow(lmer.data.ER.mixed)` , i.e. `r (nrow(lmer.data.ER.mixed) / nrow(dat[Blocktype == "Mixed" & !is.na(TrialNum)])) * 100`% of a total number of `r nrow(dat[Blocktype == "Mixed" & !is.na(TrialNum)])` trials.
+
+
 ## Model comparisons
 
 ```{r, results='asis'}
@@ -714,7 +744,7 @@ e1.names <- lmer.get.names(e1, ran.slo.mm.pat = 'e1.mm\\[, "|"\\]')
 
 stargazer.anova.Rmd(e0, e3, e2, e1,
                     model.numbers = c(5, 6, 7, 8),
-                    this.caption = "Supplementary Table S4. Error rate model comparisons to determine the random effects structure. Each column presents the parameters (random and fixed) of a model. Models in adjacent columns are compared to each other by likelihood ratios tests. Test results (<em>&chi;<sup>2</sup></em>, degress of freedom, and p value) for a model pair are printed for the right model of each pair in the last three rows. Observations - the number of single trials for the model; AICc - Akaike's Information Criterion corrected for small sample sizes; Df - model degrees of freedom; <em>&chi;<sup>2</sup></em> - statistic for the likelihood ratio test, for each model the difference in deviance compared to the model to the left; <em>&chi;<sup>2</sup></em> Df - degrees of freedom for the likelihood ratio test, for each model the difference in Df compared to the model to the left; <em>p</em> - the p-value for the likelihood ratio test.",
+                    this.caption = "Supplementary Table S4. Error rate model comparisons to determine the random effects structure. Each column presents the parameters (random and fixed) of a model. Models in adjacent columns are compared to each other by likelihood ratios tests. Test results (<em>&chi;<sup>2</sup></em>, degrees of freedom, and p value) for a model pair are printed for the right model of each pair in the last three rows. Observations - the number of single trials for the model; AICc - Akaike's Information Criterion corrected for small sample sizes; Df - model degrees of freedom; <em>&chi;<sup>2</sup></em> - statistic for the likelihood ratio test, for each model the difference in deviance compared to the model to the left; <em>&chi;<sup>2</sup></em> Df - degrees of freedom for the likelihood ratio test, for each model the difference in Df compared to the model to the left; <em>p</em> - the p-value for the likelihood ratio test.",
                     dep.var.labels = "Task error (log odds)",
                     fixed.effect.names = e1.names$fixed.effect.names,
                     random.effects.table = 5,
@@ -732,7 +762,7 @@ The table of model comparisons above indicates that the model with the complete 
 
 ## Results from the maximum identified model
 
-```{r Figure 5, fig.cap="Figure 5. Fixed effect coefficients of the maximum identified generalized linear model on task errors (Model 6). Effect contrasts are given in brackets next to the names of main effects on the y-axis. In-Up: Inverted minus upright; Inv-Val: Invalid minus valid."}
+```{r Figure 5, fig.cap="Figure 5. Fixed effect coefficients of the maximum identified generalized linear model on task errors (Model 6). Error bars represent 95% profile confidence intervals. Effect contrasts are given in brackets next to the names of main effects on the y-axis. In-Up: Inverted minus upright; Inv-Val: Invalid minus valid."}
 
 e3.names <- lmer.get.names(e3)
 e3.label <- "Model 6" # corresponds to model number in the table 'stargazer.anova.Rmd'
@@ -778,6 +808,7 @@ ggplot.lmer.fixef(e3, fixef2plot = c("Preview", "Training"),
                   noPoints = T,
                   ebp = position_dodge(width = 0.15)) +
   scale_linetype_discrete(labels = c('Val'="Valid", 'Inv'="Invalid")) + 
+  scale_color_manual(values = colorMapping) + 
   labs(title = NULL)
 
 ```
@@ -792,6 +823,406 @@ Clearly less task error with upright than with inverted targets. In addition, th
 Training influenced the preview effect in response times. In the beginning of the test phase, there was a clear preview effect if participants had trained with only valid trials. However, after invalid training there was no evidence for a preview effect. Moreover, this change in the preview effect equalled during the test phase.
 
 In addition but theoretically not relevant, target face orientation, affected performance leading to slower responses and more errors when target faces were inverted compared to when they were upright.
+
+
+# Training phase data
+
+The experiment consisted of a training and a test phase. For the main manuscript, we only analysed the data of the test phase, because only that phase was relevant. Here, we also analyse the training phase data to get an idea of why the valid training group gave slower responses than the invalid training group at the start of the test phase.
+
+```{r PREPARE TRAINING DATA FOR MODELLING}
+
+if (IMPORTDATAANEW) {
+  
+  lmer.data.RT.pure <- dat[Blocktype == "Pure" & !is.na(rtfilt) & SacEndOk == 1 & !is.na(SacEndOk) & !is.na(ResponseCorrect) & ResponseCorrect == 1]
+  
+  # lmer.data.RT.pure[, TrialNum := TrialNum - 512]
+  # -> Trial number already starts at 1!
+  lmer.data.RT.pure[, TrialNum.1z := scale(TrialNum, center = 1)] # center at first trial
+  
+  # Set contrasts with MASS package to successive difference contrasts,
+  # which are also good for our 2-level factors here
+  contrasts(lmer.data.RT.pure$Preview) <- MASS::contr.sdif(levels(lmer.data.RT.pure$Preview))
+  contrasts(lmer.data.RT.pure$TargOrient) <- MASS::contr.sdif(levels(lmer.data.RT.pure$TargOrient))
+  contrasts(lmer.data.RT.pure$Training) <- MASS::contr.sdif(levels(lmer.data.RT.pure$Training))
+  
+  save(lmer.data.RT.pure, file = paste(DATADIR, "data.RT.pure.RData", sep = "/"))
+  
+  
+  # For error rates
+  lmer.data.ER.pure <- dat[Blocktype == "Pure" & !is.na(rtfilt) & SacEndOk == 1 & !is.na(SacEndOk) & !is.na(ResponseCorrect)]
+  
+  # lmer.data.ER.pure[, TrialNum := TrialNum - 512]
+  # -> Trial number already starts at 1!
+  lmer.data.ER.pure[, TrialNum.1z := scale(TrialNum, center = 1)] # center at first trial
+  
+  contrasts(lmer.data.ER.pure$Preview) <- MASS::contr.sdif(levels(lmer.data.ER.pure$Preview))
+  contrasts(lmer.data.ER.pure$TargOrient) <- MASS::contr.sdif(levels(lmer.data.ER.pure$TargOrient))
+  contrasts(lmer.data.ER.pure$Training) <- MASS::contr.sdif(levels(lmer.data.ER.pure$Training))
+  
+  save(lmer.data.ER.pure, file = paste(DATADIR, "data.ER.pure.RData", sep = "/"))
+  
+  
+} else {
+  load(paste(DATADIR, "data.RT.pure.RData", sep = "/"))
+  load(paste(DATADIR, "data.ER.pure.RData", sep = "/"))
+}
+```
+
+
+
+## Response time
+
+```{r}
+
+if (RUNMODELLINGANEW) {
+  
+  Sys.time()
+  tm0 <- lmer(-1/RTman ~ TargOrient * Training * TrialNum.1z + (1 | partnr),
+              lmer.data.RT.pure, control = lmerCtrl)
+  # t... training model
+  Sys.time() # 1 sec
+  plot(tm0)
+  summary(tm0)
+  
+  save(tm0, file = paste(DATADIR, "tm0.RData", sep = "/"))
+  
+  tm1.mm <- model.matrix(-1/RTman ~ TargOrient * Training * TrialNum.1z, lmer.data.RT.pure)
+  # cat(paste('(0 + tm1.mm[,"', colnames(tm1.mm)[!grepl("Training", colnames(tm1.mm))], '"] | partnr) +\n', sep=""))
+  # ATTENTION: Random slopes only for within-participant effects; thus, not for 'Training'!
+  # ATTENTION: Avoid duplicate "Intercept"!
+  
+  Sys.time()
+  tm1 <- lmer(-1/RTman ~ TargOrient * Training * TrialNum.1z + 
+                (1 | partnr) +
+                (0 + tm1.mm[,"TargOrientIn-Up"] | partnr) +
+                (0 + tm1.mm[,"TrialNum.1z"] | partnr) +
+                (0 + tm1.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr),
+              lmer.data.RT.pure, control = lmerCtrl)
+  Sys.time() # 1 sec
+  plot(tm1)
+  summary(tm1)
+  
+  # save(tm1, file = paste(DATADIR, "tm1.RData", sep = "/"))
+  # -> saved below with cis
+  
+  isSingular(tm1) # FALSE
+  # the model is not singular, so we can estimate random slope correlations (and don't 
+  # need to restrict them to zero)
+  Sys.time()
+  tm2 <- lmer(-1/RTman ~ TargOrient * Training * TrialNum.1z + 
+                (TargOrient * TrialNum.1z | partnr),
+              lmer.data.RT.pure, control = lmerCtrl)
+  Sys.time() # 4 sec
+  summary(tm2)
+  isSingular(tm2) # FALSE
+  
+  anova(tm0, tm1, tm2, refit = F)
+  # 'tm1' is best!
+  # (comparing ML-fits via refit = T doesn't change anything about the conclusion)
+  
+  # Get confidence intervals for the best model
+  Sys.time()
+  tm1.cis <- confint(tm1, method = "profile")
+  Sys.time() # 4 min
+  # Make a nice table
+  tm1.fe.ci.tab <- lmer.fe.ci.tab(tm1, tm1.cis)
+  
+  save(tm1, tm1.cis, tm1.fe.ci.tab, file = paste(DATADIR, "tm1.RData", sep = "/"))
+  
+  # Get also confidence intervals for the last model
+  Sys.time()
+  tm2.cis <- confint(tm2, method = "profile")
+  Sys.time() # ? 
+  # Make a nice table
+  tm2.fe.ci.tab <- lmer.fe.ci.tab(tm2, tm2.cis)
+  
+  save(tm2, tm2.cis, tm2.fe.ci.tab, file = paste(DATADIR, "tm2.RData", sep = "/"))
+  
+  
+  # check whether only estimating the highest random slope correlation 
+  # improves the model fit
+  Sys.time()
+  tm3 <- lmer(-1/RTman ~ TargOrient * Training * TrialNum.1z + 
+                (1 | partnr) + 
+                (0 + tm1.mm[, "TargOrientIn-Up"] + 
+                   tm1.mm[, "TargOrientIn-Up:TrialNum.1z"] | partnr) + 
+                (0 + tm1.mm[, "TrialNum.1z"] | partnr),
+              lmer.data.RT.pure, control = lmerCtrl)
+  Sys.time() # 2 sec
+  summary(tm3)
+  isSingular(tm3) # FALSE
+
+  anova(tm0, tm1, tm3, tm2, refit = F)
+  # anova(tm0, tm1, tm3, tm2, refit = T)
+  # -> result almost the same as with refit = F, just that models that differ
+  #    in random effects part shouldn't be compared with ML, right? and according
+  #    to AIC result is the same as with refit = F, i.e. 'tm3' is best.
+  #
+  # -> Means, estimating only the highest random slope correlation from 'tm2'
+  #    does improve the model fit, i.e. 'tm3' is minimally better than 'tm1' acc. to AIC.
+  
+  # Get also confidence intervals
+  Sys.time()
+  tm3.cis <- confint(tm3, method = "profile")
+  Sys.time() # ? 
+  # Make a nice table
+  tm3.fe.ci.tab <- lmer.fe.ci.tab(tm3, tm3.cis)
+  
+  save(tm3, tm3.cis, tm3.fe.ci.tab, file = paste(DATADIR, "tm3.RData", sep = "/"))
+  
+} else {
+  load("data/data.RT.pure.RData")
+  load("data/tm0.RData")
+  load("data/tm1.RData")
+  load("data/tm2.RData")
+  load("data/tm3.RData")
+}
+```
+
+
+### Model comparisons
+
+```{r, results='asis'}
+
+tm1.names <- lmer.get.names(tm1, ran.slo.mm.pat = 'tm1.mm\\[, "|"\\]') # should be 'tm1'
+# correct random slope names manually
+tm1.names$random.slope.names <- c('^\\(Intercept\\)$'="(Intercept)",
+                                  '^tm1.mm\\[, \"TargOrientIn-Up\"\\]$'="Target Orientation (In-Up)",
+                                  '^tm1.mm\\[, \"TrialNum.1z\"\\]$'="Trial number",
+                                  '^tm1.mm\\[, \"TargOrientIn-Up:TrialNum.1z\"\\]$'="Target Orientation x Trial number",
+                                  '^TargOrientIn-Up$'="Target Orientation (In-Up)",
+                                  '^TrialNum.1z$'="Trial number",
+                                  '^TargOrientIn-Up:TrialNum.1z$'="Target Orientation x Trial number")
+
+tm1.names$random.factor.names <- c('^partnr$'="Participant",
+                                   '^partnr\\.1$'="Participant",
+                                   '^partnr\\.2$'="Participant",
+                                   '^partnr\\.3$'="Participant")
+
+stargazer.anova.Rmd(tm0, tm1, tm3, tm2, 
+                    model.numbers = c(9, 10, 11, 12),
+                    this.caption = "Supplementary Table S5. Training phase response time model comparisons to determine the random effects structure. Each column presents the parameters (random and fixed) of a model. Models in adjacent columns are compared to each other by likelihood ratios tests. Test results (<em>&chi;<sup>2</sup></em>, degrees of freedom, and p value) for a model pair are printed for the right model of each pair in the last three rows. Observations - the number of single trials for the model; AICc - Akaike's Information Criterion corrected for small sample sizes; Df - model degrees of freedom; <em>&chi;<sup>2</sup></em> - statistic for the likelihood ratio test, for each model the difference in deviance compared to the model to the left; <em>&chi;<sup>2</sup></em> Df - degrees of freedom for the likelihood ratio test, for each model the difference in Df compared to the model to the left; <em>p</em> - the p-value for the likelihood ratio test.",
+                    dep.var.labels = "-1 / Response time [sec]",
+                    fixed.effect.names = tm1.names$fixed.effect.names,
+                    random.effects.table = 8,
+                    random.slope.names = tm1.names$random.slope.names,
+                    random.factor.names = tm1.names$random.factor.names,
+                    report = "vcst",
+                    suppressNegativeChiDf = T,
+                    notes = "", # "<sup>r</sup> Correlations between random slopes estimated, i.e. not restricted to zero.",
+                    add.VarCorr.tables = F, # we don't need the complete variance structure tables, because we don't have any correlations in the models anyway.
+                    out = "tables/SupplementaryTableS5.html") # write to file
+```
+
+
+
+### Results from the maximum identified model
+
+
+```{r Figure S3, fig.cap="Figure S3. Training phase data. Fixed effect coefficients of the best maximum identified linear mixed model on response times (Model 11). Effect contrasts are given in brackets next to the names of main effects on the y-axis. In-Up: Inverted minus upright; Inv-Val: Invalid minus valid."}
+
+tm3.label <- "Model 11" # corresponds to model number in the table 'stargazer.anova.Rmd'
+
+tm3.names <- lmer.get.names(tm3)
+ggplot.lmer.coefplot2(tm3.fe.ci.tab, 
+                      coef.names = tm3.names$fixed.effect.names[2:length(tm3.names$fixed.effect.names)],
+                      model.names = tm3.label)
+
+ggsave("figures/Figure-S3-raw.pdf")
+
+```
+
+
+
+```{r Table, results='asis'}
+# get nicer names
+for (i in length(tm3.names$fixed.effect.names):1) { # reverse direction of the loop!
+  tm3.fe.ci.tab$Parameter <- gsub(names(tm3.names$fixed.effect.names[i]),
+                                  tm3.names$fixed.effect.names[i],
+                                  tm3.fe.ci.tab$Parameter)
+}
+# create the table
+stargazer(tm3.fe.ci.tab, summary = F, type = "html", rownames = F,
+          title = sprintf("Fixed effects of %s. Estimate, standard error, t-value, and lower/upper limit of 95%% profile confidence intervals. This table contains the data plotted in Figure S3.",
+                          tm3.label))
+```
+
+
+```{r Figure S4, fig.width=14, fig.cap="Figure S4. Left panel: Response time across trials in the training phase consisting one group of participants of only valid trials and for another group of participants of only invalid trials (Model 11). Right panel: Response time across trials in the test phase which consisted of 50% valid and invalid trials for all participants (right panel, Model 2, identical to Figure 4). Dots represent a random sample of half of all individual data points. Note that trial numbers were standardized and centered on the first trials within each phase."}
+
+FigureS4A <- ggplot.lmer.fixef(tm3, fixef2plot = c("Training",
+                                                   contpred="TrialNum.1z"),
+                               dv.fnc = function(rt) - 1000 / rt, 
+                               ylab = "Response time [ms]",
+                               xlab = "Trial number (standardized)",
+                               mappingAdd = "x = TrialNum.1z, colour = Training",
+                               sample.proportion = 2) +
+  labs(color = "Training",
+       title = "Training phase\n100% valid or 100% invalid") + 
+  scale_linetype_discrete(labels = c("Valid","Invalid")) + 
+  scale_color_manual(values = colorMapping) + 
+  coord_cartesian(ylim = c(250, 2000))
+
+FigureS4 <- cbind_plots(FigureS4A, 
+                        Figure4 + labs(title = "Test phase\n50% valid/invalid"))
+# to get the figure in the html file
+grid.draw(FigureS4)
+# also save the figure as pdf
+invisible(dev.off())
+pdf("figures/Figure-S4-raw.pdf", width = 14)
+grid::grid.draw(FigureS4)
+invisible(dev.off())
+
+```
+
+
+Note, Figure S4 is zoomed-in at the y-axis.
+
+### Training phase response time summary
+
+As can be seen from the model coefficients in Figure S3 and the response time data across trials in Figure S4, participants in the invalid training condition showed numerically, though not significantly, slower response times than the valid training participants in the beginning of the training phase. This difference numerically declined throught the training phase. At the start of the test phase, both groups of participants were about equally fast. Interestingly, at the beginning of the test phase, the invalid training group still showed about the same response time whereas the valid training group showed significantly slower responses.
+
+
+
+## Error rate
+
+
+```{r}
+
+if (RUNMODELLINGANEW) {
+  
+  Sys.time()
+  te0 <- glmer(RespErr ~ TargOrient * Training * TrialNum.1z + (1 | partnr),
+               lmer.data.ER.pure, family = binomial(link = logit), control = glmerCtrl)
+  Sys.time() # 6 sec
+  plot(te0) # that's fine. it's a logit model, so the residuals do _not_ have to be a more or less symmetric cloud!
+  summary(te0)
+  
+  # save
+  save(te0, file = paste(DATADIR, "te0.RData", sep = "/"))
+  
+  # but e0 does not have random slopes, so might overestimate some effects,
+  # try another model with some random slopes
+  te1.mm <- model.matrix(RespErr ~ TargOrient * Training * TrialNum.1z, lmer.data.ER.pure)
+  # to get all the values into script via copy and paste use this output:
+  #   cat(paste('(0 + te1.mm[,"', colnames(te1.mm)[!grepl("Training", colnames(te1.mm))], '"] | partnr) +\n', sep=""))
+  # ATTENTION: Random slopes only for within-participant effects! Thus, NOT for 'Training'!
+  # ATTENTION: Avoid duplicate "Intercept"!
+  Sys.time()
+  te1 <- glmer(RespErr ~ TargOrient * Training * TrialNum.1z + 
+                (1 | partnr) + 
+                (0 + te1.mm[,"TargOrientIn-Up"] | partnr) +
+                (0 + te1.mm[,"TrialNum.1z"] | partnr) +
+                (0 + te1.mm[,"TargOrientIn-Up:TrialNum.1z"] | partnr),
+              lmer.data.ER.pure, family = binomial(link = logit), control = glmerCtrl)
+  Sys.time() # 15 sec
+  isSingular(te1) # is singular!
+  summary(te1)
+  
+  save(te1, te1.mm, file = paste(DATADIR, "te1.RData", sep = "/"))
+  
+  # remove the smallest random slopes variance component
+  Sys.time()
+  te2 <- glmer(RespErr ~ TargOrient * Training * TrialNum.1z + 
+                (1 | partnr) + 
+                (0 + te1.mm[,"TargOrientIn-Up"] | partnr) +
+                (0 + te1.mm[,"TrialNum.1z"] | partnr),
+              lmer.data.ER.pure, family = binomial(link = logit), control = glmerCtrl)
+  Sys.time() # 15 sec
+  isSingular(te2) # FALSE!
+  summary(te2)
+  
+  Sys.time()
+  te2.cis <- confint(te2, method = "profile")
+  Sys.time() # ?
+  
+  te2.ci.tab <- glmer.ci.tab(te2, te2.cis)
+  
+  save(te2, te2.cis, te2.ci.tab, file = paste(DATADIR, "te2.RData", sep = "/"))
+  
+  
+} else {
+  load("data/data.ER.pure.RData")
+  load("data/te0.RData")
+  load("data/te1.RData")
+  load("data/te2.RData")
+}
+```
+
+
+### Model comparisons
+
+```{r, results='asis'}
+
+te1.names <- lmer.get.names(te1, ran.slo.mm.pat = 'te1.mm\\[, "|"\\]') # should be 'tm1'
+# correct random slope names manually
+te1.names$random.slope.names <- c('^\\(Intercept\\)$'="(Intercept)",
+                                  '^tm1.mm\\[, \"TargOrientIn-Up\"\\]$'="Target Orientation (In-Up)",
+                                  '^tm1.mm\\[, \"TrialNum.1z\"\\]$'="Trial number",
+                                  '^tm1.mm\\[, \"TargOrientIn-Up:TrialNum.1z\"\\]$'="Target Orientation x Trial number",
+                                  '^TargOrientIn-Up$'="Target Orientation (In-Up)",
+                                  '^TrialNum.1z$'="Trial number",
+                                  '^TargOrientIn-Up:TrialNum.1z$'="Target Orientation x Trial number")
+te1.names$random.factor.names <- c('^partnr$'="Participant",
+                                   '^partnr\\.1$'="Participant",
+                                   '^partnr\\.2$'="Participant",
+                                   '^partnr\\.3$'="Participant")
+
+stargazer.anova.Rmd(te0, te2, te1,
+                    model.numbers = c(13, 14, 15),
+                    this.caption = "Supplementary Table S6. Training phase error rate model comparisons to determine the random effects structure. Each column presents the parameters (random and fixed) of a model. Models in adjacent columns are compared to each other by likelihood ratios tests. Test results (<em>&chi;<sup>2</sup></em>, degrees of freedom, and p value) for a model pair are printed for the right model of each pair in the last three rows. Observations - the number of single trials for the model; AICc - Akaike's Information Criterion corrected for small sample sizes; Df - model degrees of freedom; <em>&chi;<sup>2</sup></em> - statistic for the likelihood ratio test, for each model the difference in deviance compared to the model to the left; <em>&chi;<sup>2</sup></em> Df - degrees of freedom for the likelihood ratio test, for each model the difference in Df compared to the model to the left; <em>p</em> - the p-value for the likelihood ratio test.",
+                    dep.var.labels = "Task error (log odds)",
+                    fixed.effect.names = te1.names$fixed.effect.names,
+                    random.effects.table = 5,
+                    random.slope.names = te1.names$random.slope.names,
+                    random.factor.names = te1.names$random.factor.names,
+                    report = "vcst",
+                    suppressNegativeChiDf = T,
+                    omit.fitting.method = T, # has to be TRUE for glmerMod!
+                    notes = "",
+                    add.VarCorr.tables = F, # we don't need the complete variance structure tables, because we don't have any correlations in the models anyway.
+                    out = "tables/SupplementaryTableS6.html") # write to file
+```
+
+
+
+### Results from the maximum identified model
+
+```{r Figure S5, fig.cap="Figure S5. Training phase data. Fixed effect coefficients of the best maximum identified linear mixed model on error rates (Model 14). Effect contrasts are given in brackets next to the names of main effects on the y-axis. In-Up: Inverted minus upright; Inv-Val: Invalid minus valid."}
+
+te2.label <- "Model 14" # corresponds to model number in the table 'stargazer.anova.Rmd'
+
+te2.names <- lmer.get.names(te2)
+ggplot.lmer.coefplot2(te2.ci.tab, 
+                      coef.names = te2.names$fixed.effect.names[2:length(te2.names$fixed.effect.names)],
+                      model.names = te2.label,
+                      plot.intercept = F)
+
+ggsave("figures/Figure-S5-raw.pdf")
+
+```
+
+
+```{r, results='asis'}
+# get nicer names
+for (i in length(te1.names$fixed.effect.names):1) { # reverse direction of the loop!
+  te2.ci.tab$Parameter <- gsub(names(te1.names$fixed.effect.names[i]), te1.names$fixed.effect.names[i],
+                                  te2.ci.tab$Parameter)
+}
+# create the table
+stargazer(te2.ci.tab, summary = F, type = "html", rownames = F,
+          title = sprintf("Fixed effects of %s. Estimate and lower/upper limit of 95%% profile confidence intervals. This table contains the data plotted in Figure S5.",
+                          te2.label))
+```
+
+### Training phase error rates summary
+
+In the training phase error rates, there is an effect of Target Orientation as we know it (less errors with upright than with inverted targets) and an effect of Trial Number with a negative coefficient meaning that errors decrease across the training phase.
+
+
+# Training phase summary and conclusions
+
+The response time data of the training phase provides some evidence that invalid trials were actually surprising. The valid training group saw the invalid trails for the first time in the beginning of the test phase whereas the invalid training group was already used to the invalid trials. At the end of the training phase, both groups were about equally fast, but at the start of the test phase, the valid training group showed significantly slower responses. Moreover, for the valid training group, responses were particularly slowed down for invalid trials (cf. Figure S4 above). This pattern suggests that the invalid trials were indeed unexpected for the valid training group. In contrast, valid trials did not seem to be a big surprise for the invalid training group, supposedly because of the everyday life experience that objects usually do not change during saccades. Credit to an anonymous reviewer for this insight. Error rates did not show any effects worth mentioning; they were simply lower for upright than for inverted targets and they decreased across the training phase.
 
 
 # Session information
