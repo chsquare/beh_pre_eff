@@ -2,7 +2,7 @@
 [![DOI](https://zenodo.org/badge/254319738.svg)](https://zenodo.org/badge/latestdoi/254319738)
 
 This repository contains the complete analysis code and additional information for  
-**Huber-Huber &amp; Melcher (2020) The behavioural preview effect with faces is susceptible to statistical regularities: Evidence for predictive processing across the saccade. Manuscript submitted for publication.**
+**Huber-Huber, C. &amp; Melcher, D. (in press) The behavioural preview effect with faces is susceptible to statistical regularities: Evidence for predictive processing across the saccade. *Scientific Reports*. **
 
 To recompute the results, get the raw data file from [osf.io](https://osf.io/), with [doi:10.17605/OSF.IO/TY69K](https://doi.org/10.17605/OSF.IO/TY69K), and put it into a folder with the name 'data' inside this repository.
 
