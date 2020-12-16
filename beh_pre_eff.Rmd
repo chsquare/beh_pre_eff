@@ -16,7 +16,7 @@ editor_options:
 ---
 
 This is the html-rendered R markdown file (`Rmd`) which accompanies the manuscript:  
-**Huber-Huber, C. & Melcher, D. (2020) The behavioural preview effect with faces is susceptible to statistical regularities: Evidence for predictive processing across the saccade. Manuscript submitted for publication.**
+**Huber-Huber, C. & Melcher, D. (in press) The behavioural preview effect with faces is susceptible to statistical regularities: Evidence for predictive processing across the saccade. *Scientific Reports* . **
 
 The code used to generate this file reproduces all statistics and figures in the manuscript from the data which is provided as well on the OSF page of the project (https://osf.io/ty69k/). To regenerate this file from the raw data, set the variables `IMPORTDATAANEW` and `RUNMODELLINGANEW` in the code chunk called `ANALYSIS SETTINGS` to `TRUE`.
 
@@ -515,7 +515,7 @@ The table of model comparisons above indicates that the model with the complete 
 
 ## Results from the maximum identified model
 
-```{r Figure 2, fig.width=5, fig.cap="Figure 2. Estimated marginal means from the maximum identified model on response time data (Model 2). Individual participants' conditional modes are illustrated with smaller symbols and thin lines connecting the valid and invalid preview points. The preview effect, the difference between valid and invalid preview trials, depended on the training condition. In contrast to valid training (left side), there was no evidence for a preview effect with invalid training (right side, see also Models 2a and 2b below). Note that effect estimates were obtained for the first trial of the test phase. Error bars represent asymptotic confidence intervals."}
+```{r Figure 2, fig.width=5, fig.cap="Figure 2. Estimated marginal means from the maximum identified model on response time data (Model 2). Individual participants' conditional modes are illustrated with smaller symbols and thin lines connecting the valid and invalid preview points. The preview effect, the difference between valid and invalid preview trials, depended on the training condition. In contrast to valid training (left side), there was no evidence for a preview effect with invalid training (right side, see also Models 2a and 2b below). Note that effect estimates were obtained for the first trial of the test phase. Error bars represent 95% asymptotic confidence intervals."}
 
 m3.label <- "Model 2" # corresponds to model number in the table 'stargazer.anova.Rmd'
 
