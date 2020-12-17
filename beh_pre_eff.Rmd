@@ -42,12 +42,14 @@ suppressPackageStartupMessages(library(knitr))
 # getOption("width") # The default width for code output is 75, which is quite narrow.
 options(width=150)
 
+# To avoid error in displaying some symbols in the figures
+useDingbats <- FALSE
 if (.Platform$OS.type == "unix") {
   knitr.dev.args <- NULL
 } else {
   # nice to have on windows
-  knitr.dev.args <- list(useDingbats=FALSE)
-} 
+  knitr.dev.args <- list(useDingbats=useDingsbats)
+}
 
 opts_chunk$set(echo=FALSE,
                cache=FALSE,
@@ -536,7 +538,7 @@ ggplot.lmer.fixef(m3, fixef2plot = c("Preview", "Training"),
   scale_color_manual(values = colorMapping) + 
   guides(color = FALSE, shape = FALSE)
 
-ggsave("figures/Figure-2-raw.pdf")
+ggsave("figures/Figure-2-raw.pdf", useDingbats=useDingbats)
 
 ```
 
@@ -547,7 +549,7 @@ ggplot.lmer.coefplot2(m3.fe.ci.tab,
                       coef.names = m3.names$fixed.effect.names[2:length(m3.names$fixed.effect.names)],
                       model.names = m3.label)
 
-ggsave("figures/Figure-3-raw.pdf")
+ggsave("figures/Figure-3-raw.pdf", useDingbats=useDingbats)
 
 ```
 
@@ -582,7 +584,7 @@ Figure4 <- ggplot.lmer.fixef(m3, fixef2plot = c("Preview", "Training",
 # show the figure
 Figure4
 
-ggsave("figures/Figure-4-raw.pdf")
+ggsave("figures/Figure-4-raw.pdf", useDingbats=useDingbats)
 
 ```
 
@@ -772,7 +774,7 @@ ggplot.lmer.coefplot2(e3.ci.tab,
                       coef.names = e3.names$fixed.effect.names[2:length(e3.names$fixed.effect.names)], 
                       model.names = e3.label)
 
-ggsave("figures/Figure-5-raw.pdf")
+ggsave("figures/Figure-5-raw.pdf", useDingbats=useDingbats)
 
 ```
 
@@ -1030,7 +1032,7 @@ ggplot.lmer.coefplot2(tm3.fe.ci.tab,
                       coef.names = tm3.names$fixed.effect.names[2:length(tm3.names$fixed.effect.names)],
                       model.names = tm3.label)
 
-ggsave("figures/Figure-S3-raw.pdf")
+ggsave("figures/Figure-S3-raw.pdf", useDingbats=useDingbats)
 
 ```
 
@@ -1200,7 +1202,7 @@ ggplot.lmer.coefplot2(te2.ci.tab,
                       model.names = te2.label,
                       plot.intercept = F)
 
-ggsave("figures/Figure-S5-raw.pdf")
+ggsave("figures/Figure-S5-raw.pdf", useDingbats=useDingbats)
 
 ```
 
