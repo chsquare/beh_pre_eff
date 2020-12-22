@@ -16,7 +16,7 @@ editor_options:
 ---
 
 This is the html-rendered R markdown file (`Rmd`) which accompanies the article:  
-**Huber-Huber, C. & Melcher, D. (in press) The behavioural preview effect with faces is susceptible to statistical regularities: Evidence for predictive processing across the saccade. *Scientific Reports* . **
+**Huber-Huber, C. & Melcher, D. (in press) The behavioural preview effect with faces is susceptible to statistical regularities: Evidence for predictive processing across the saccade. *Scientific Reports*. http://dx.doi.org/10.1038/s41598-020-79957-w **
 
 The underlying `Rmd` file reproduces this html report and all statistics and figures in the article from the data which is provided as well on the OSF page of the project (https://osf.io/ty69k/). To regenerate this html file from the raw data, set the variables `IMPORTDATAANEW` and `RUNMODELLINGANEW` in the code chunk called `ANALYSIS SETTINGS` to `TRUE`.
 
